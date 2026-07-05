@@ -16,7 +16,7 @@ type LoginDialogProps = {
 };
 
 export function LoginDialog({ open, initialMode = "password", onClose }: LoginDialogProps) {
-  const { user, login, logout, redirectForRole } = useAuth();
+  const { user, login, logout, redirectForRole, startAuth0Login } = useAuth();
   const { t } = usePreferences();
   const router = useRouter();
   const [mode, setMode] = useState<"password" | "google">(initialMode);
@@ -128,14 +128,17 @@ export function LoginDialog({ open, initialMode = "password", onClose }: LoginDi
                   )}
                 </p>
                 {error ? <ErrorState message={error} /> : null}
-                <a
+                <button
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
-                  href="/auth/login?connection=google-oauth2&returnTo=/auth0/complete"
-                  onClick={onClose}
+                  onClick={() => {
+                    onClose();
+                    void startAuth0Login();
+                  }}
+                  type="button"
                 >
                   <Mail className="h-4 w-4" />
                   {t("Entrar con Google", "Continue with Google")}
-                </a>
+                </button>
               </div>
             )}
           </>

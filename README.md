@@ -4,7 +4,7 @@ Frontend de NUB System, una aplicacion profesional para gestion de barberia.
 
 ## Stack
 
-- Next.js con App Router
+- Next.js con App Router exportado como static site
 - React
 - TypeScript
 - Tailwind CSS
@@ -26,12 +26,13 @@ Copiar `.env.local.example` a `.env.local` y ajustar los valores:
 cp .env.local.example .env.local
 ```
 
-### Auth0
+### Auth0 para static site
 
-En `.env.local`, pegar el client secret real en:
+El frontend estatico no usa `AUTH0_CLIENT_SECRET` ni `AUTH0_SECRET`. Esos secretos no pueden vivir en un static site.
 
 ```env
-AUTH0_CLIENT_SECRET=PEGA_TU_CLIENT_SECRET_ACA
+NEXT_PUBLIC_AUTH0_DOMAIN=dev-1a67u9mz.us.auth0.com
+NEXT_PUBLIC_AUTH0_CLIENT_ID=MRrsVJYMkQ7hK5LCVGTvfyR1ereHvoQZ
 ```
 
 Para desarrollo local actual, la app corre en `http://localhost:4017`.
@@ -40,36 +41,37 @@ Configurar en Auth0:
 
 ```text
 Allowed Callback URLs
-http://127.0.0.1:4017/auth/callback,
-http://localhost:4017/auth/callback,
-https://barberia-app.onrender.com/auth/callback
+http://127.0.0.1:4017/auth0/complete/,
+http://127.0.0.1:4017/auth0/complete,
+http://localhost:4017/auth0/complete/,
+http://localhost:4017/auth0/complete,
+https://TU-FRONTEND.onrender.com/auth0/complete/,
+https://TU-FRONTEND.onrender.com/auth0/complete
 
 Allowed Logout URLs
 http://127.0.0.1:4017,
 http://localhost:4017,
-https://barberia-app.onrender.com
+https://TU-FRONTEND.onrender.com
 
 Allowed Web Origins
 http://127.0.0.1:4017,
 http://localhost:4017,
-https://barberia-app.onrender.com
+https://TU-FRONTEND.onrender.com
 
 Allowed Origins (CORS)
 http://127.0.0.1:4017,
 http://localhost:4017,
-https://barberia-app.onrender.com
+https://TU-FRONTEND.onrender.com
 ```
-
-Si se cambia `APP_BASE_URL`, agregar en Auth0 el callback equivalente con `/auth/callback`.
 
 Chequear tambien en Auth0:
 
-- Application Type: `Regular Web Application`.
-- Client Authentication / Token Endpoint Authentication Method: con client secret, no `None`.
-- Grant Types: `Authorization Code` activo; si se mantiene el scope default del SDK, tambien `Refresh Token`.
+- Application Type: `Single Page Application`.
+- Grant Types: `Authorization Code` activo.
+- El login usa Authorization Code + PKCE, sin client secret.
 - Connections: habilitar `google-oauth2` para esta aplicacion.
 
-Despues de cambiar `.env.local`, reiniciar Next para que lea los secrets nuevos.
+El backend valida el `id_token` de Auth0 con JWKS en `/api/auth/auth0` y recien ahi emite el JWT interno de NUB.
 
 ### Imagenes / Cloudinary
 
@@ -89,13 +91,33 @@ No poner `CLOUDINARY_API_SECRET` en el frontend.
 ```bash
 npm run dev
 npm run build
-npm run start
 npm run lint
 ```
 
 ## Deploy
 
-El proyecto esta preparado para Vercel o Render. Para deploy estatico, revisar las rutas que dependan de APIs dinamicas antes de activar exportacion estatica.
+El proyecto esta preparado para Render Static Site.
+
+Render Static Site:
+
+```text
+Build Command: npm install && npm run build
+Publish Directory: out
+Root Directory: vacio, si el repo contiene solo este frontend
+```
+
+Variables de entorno en Render:
+
+```env
+NEXT_PUBLIC_API_URL=https://TU-BACKEND.onrender.com/api
+NEXT_PUBLIC_SOCKET_URL=https://TU-BACKEND.onrender.com
+NEXT_PUBLIC_BACKEND_URL=https://TU-BACKEND.onrender.com
+NEXT_PUBLIC_FRONTEND_URL=https://TU-FRONTEND.onrender.com
+NEXT_PUBLIC_AUTH0_DOMAIN=dev-1a67u9mz.us.auth0.com
+NEXT_PUBLIC_AUTH0_CLIENT_ID=MRrsVJYMkQ7hK5LCVGTvfyR1ereHvoQZ
+```
+
+No configurar `AUTH0_CLIENT_SECRET`, `AUTH0_SECRET` ni Cloudinary secrets en el frontend static.
 
 ## Estructura
 

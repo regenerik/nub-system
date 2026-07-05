@@ -17,6 +17,11 @@ import {
   writeToken,
 } from "@/lib/auth-storage";
 import { disconnectSocket } from "@/lib/socket";
+import {
+  auth0LogoutUrl,
+  completeAuth0Login as completeAuth0PkceLogin,
+  startAuth0Login,
+} from "@/lib/auth0-spa";
 import type { LoginResponse, User, UserRole } from "@/types/domain";
 
 type AuthContextValue = {
@@ -24,7 +29,8 @@ type AuthContextValue = {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
-  auth0Login: () => Promise<User>;
+  startAuth0Login: () => Promise<void>;
+  completeAuth0Login: () => Promise<User>;
   googleLogin: (payload: {
     email: string;
     full_name: string;
@@ -96,16 +102,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setSession],
   );
 
-  const auth0Login = useCallback(async () => {
-    const response = await fetch("/api/auth0/exchange", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    const data = (await response.json()) as LoginResponse | { message?: string };
-    if (!response.ok || !("access_token" in data)) {
-      const message = "message" in data ? data.message : undefined;
-      throw new Error(message ?? "No se pudo completar el login con Auth0.");
-    }
+  const completeAuth0Login = useCallback(async () => {
+    const idToken = await completeAuth0PkceLogin();
+    const data = await api.post<LoginResponse>("/auth/auth0", { id_token: idToken });
     setSession(data.access_token, data.user);
     return data.user;
   }, [setSession]);
@@ -113,7 +112,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     disconnectSocket();
     setSession(null, null);
-    window.location.assign("/auth/logout");
+    try {
+      window.location.assign(auth0LogoutUrl());
+    } catch {
+      window.location.assign("/");
+    }
   }, [setSession]);
 
   const value = useMemo(
@@ -122,13 +125,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       login,
-      auth0Login,
+      startAuth0Login,
+      completeAuth0Login,
       googleLogin,
       logout,
       me,
       redirectForRole,
     }),
-    [auth0Login, googleLogin, loading, login, logout, me, redirectForRole, token, user],
+    [completeAuth0Login, googleLogin, loading, login, logout, me, redirectForRole, token, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

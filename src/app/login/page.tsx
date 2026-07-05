@@ -10,7 +10,7 @@ import { ErrorState } from "@/components/ui/status";
 import { useAuth } from "@/components/auth/auth-provider";
 
 export default function LoginPage() {
-  const { login, redirectForRole } = useAuth();
+  const { login, redirectForRole, startAuth0Login } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("Admin123!");
@@ -72,12 +72,13 @@ export default function LoginPage() {
               Auth0 autentica con Google y despues NUB crea tu sesion interna.
             </p>
             <div className="mt-5 grid gap-4">
-              <a
+              <button
                 className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
-                href="/auth/login?connection=google-oauth2&returnTo=/auth0/complete"
+                onClick={() => void startAuth0Login()}
+                type="button"
               >
                 Entrar con Google
-              </a>
+              </button>
               <Link className="text-sm font-semibold text-brass" href="/reservar">
                 Reservar sin iniciar sesion
               </Link>

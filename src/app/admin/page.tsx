@@ -786,7 +786,7 @@ function BranchesAdmin({ reload, onMessage }: { reload: () => void; onMessage: (
     <CrudSection
       title="Sucursales"
       items={items.map((item) => (
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div key={item.id} className="grid gap-3 sm:grid-cols-[1fr_auto]">
           <div>
             <p className="font-bold text-ink">{item.name}</p>
             <p>{item.address}</p>
@@ -910,7 +910,7 @@ function ServicesAdmin({ branches, onMessage }: { branches: Branch[]; onMessage:
   }
   return (
     <CrudSection title="Servicios y extras" items={items.map((item) => (
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div key={item.id} className="flex flex-wrap items-center justify-between gap-3">
         <span>{item.name} - {item.service_type} - {money(item.price)}</span>
         <Button type="button" variant="secondary" onClick={() => edit(item)}>Editar</Button>
       </div>
@@ -1047,7 +1047,7 @@ function ClientsAdmin() {
     <CrudSection
       title="Clientes"
       items={items.map((item) => (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div key={item.id} className="flex flex-wrap items-center justify-between gap-3">
           <span>{item.full_name} - {item.email} - {item.phone}</span>
           <Button type="button" variant="secondary" onClick={() => edit(item)}>Editar</Button>
         </div>
@@ -1161,7 +1161,7 @@ function BarbersAdmin({ branches, onMessage }: { branches: Branch[]; onMessage: 
     <CrudSection
       title="Barberos"
       items={items.map((item) => (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div key={item.id} className="flex flex-wrap items-center justify-between gap-3">
           <span>{item.full_name} - {item.email || ""}</span>
           <Button type="button" variant="secondary" onClick={() => edit(item)}>Editar</Button>
         </div>

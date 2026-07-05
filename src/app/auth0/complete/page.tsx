@@ -8,7 +8,7 @@ import { usePreferences } from "@/components/preferences-provider";
 import { ErrorState } from "@/components/ui/status";
 
 export default function Auth0CompletePage() {
-  const { auth0Login, redirectForRole } = useAuth();
+  const { completeAuth0Login, redirectForRole } = useAuth();
   const { t } = usePreferences();
   const router = useRouter();
   const [error, setError] = useState("");
@@ -16,7 +16,7 @@ export default function Auth0CompletePage() {
   useEffect(() => {
     let cancelled = false;
 
-    auth0Login()
+    completeAuth0Login()
       .then((user) => {
         if (!cancelled) {
           router.replace(redirectForRole(user.role));
@@ -31,7 +31,7 @@ export default function Auth0CompletePage() {
     return () => {
       cancelled = true;
     };
-  }, [auth0Login, redirectForRole, router, t]);
+  }, [completeAuth0Login, redirectForRole, router, t]);
 
   return (
     <>

@@ -6,9 +6,11 @@ import { BookingModal } from "@/components/booking/booking-modal";
 import { PublicHeader } from "@/components/layout/public-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/components/auth/auth-provider";
 
 export default function Home() {
   const { t } = usePreferences();
+  const { startAuth0Login } = useAuth();
   const [bookingOpen, setBookingOpen] = useState(false);
 
   return (
@@ -31,13 +33,14 @@ export default function Home() {
               <CalendarPlus className="h-5 w-5" />
               {t("Reservar turno", "Book now")}
             </Button>
-            <a
+            <button
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
-              href="/auth/login?connection=google-oauth2&returnTo=/auth0/complete"
+              onClick={() => void startAuth0Login()}
+              type="button"
             >
               <Mail className="h-4 w-4" />
               {t("Entrar con Google", "Continue with Google")}
-            </a>
+            </button>
           </div>
         </section>
       </main>
