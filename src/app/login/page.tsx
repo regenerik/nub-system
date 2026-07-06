@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("Admin123!");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [auth0Loading, setAuth0Loading] = useState(false);
 
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -28,6 +29,15 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : "No se pudo iniciar sesion.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function goToAuth0() {
+    setAuth0Loading(true);
+    try {
+      await startAuth0Login();
+    } catch {
+      setAuth0Loading(false);
     }
   }
 
@@ -53,7 +63,7 @@ export default function LoginPage() {
                 />
               </Field>
               {error ? <ErrorState message={error} /> : null}
-              <Button disabled={loading} type="submit">
+              <Button loading={loading} type="submit">
                 {loading ? "Entrando..." : "Entrar"}
               </Button>
             </div>
@@ -72,13 +82,14 @@ export default function LoginPage() {
               Auth0 autentica con Google y despues NUB crea tu sesion interna.
             </p>
             <div className="mt-5 grid gap-4">
-              <button
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
-                onClick={() => void startAuth0Login()}
+              <Button
+                loading={auth0Loading}
+                onClick={() => void goToAuth0()}
                 type="button"
+                variant="secondary"
               >
-                Entrar con Google
-              </button>
+                {auth0Loading ? "Redirigiendo..." : "Entrar con Google"}
+              </Button>
               <Link className="text-sm font-semibold text-brass" href="/reservar">
                 Reservar sin iniciar sesion
               </Link>

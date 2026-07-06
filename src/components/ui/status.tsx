@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 
 export function EmptyState({ title, body }: { title: string; body?: string }) {
   return (
     <div className="rounded-lg border border-dashed border-black/15 bg-smoke/60 p-4 text-sm">
       <p className="font-semibold text-ink">{title}</p>
       {body ? <p className="mt-1 leading-6 text-steel">{body}</p> : null}
+    </div>
+  );
+}
+
+export function LoadingState({ title = "Cargando..." }: { title?: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-black/10 bg-smoke/60 p-4 text-sm font-semibold text-steel">
+      <LoaderCircle className="h-4 w-4 animate-spin text-brass" />
+      <span>{title}</span>
     </div>
   );
 }

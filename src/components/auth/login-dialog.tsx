@@ -25,12 +25,14 @@ export function LoginDialog({ open, initialMode = "password", onClose }: LoginDi
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [auth0Loading, setAuth0Loading] = useState(false);
 
   useEffect(() => {
     if (open) {
       setMode(initialMode);
       setError("");
       setMessage("");
+      setAuth0Loading(false);
     }
   }, [initialMode, open]);
 
@@ -48,6 +50,17 @@ export function LoginDialog({ open, initialMode = "password", onClose }: LoginDi
       setError(err instanceof Error ? err.message : t("No se pudo iniciar sesion.", "Could not sign in."));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function goToAuth0() {
+    setAuth0Loading(true);
+    setError("");
+    try {
+      await startAuth0Login();
+    } catch (err) {
+      setAuth0Loading(false);
+      setError(err instanceof Error ? err.message : t("No se pudo iniciar Auth0.", "Could not start Auth0."));
     }
   }
 
@@ -114,8 +127,8 @@ export function LoginDialog({ open, initialMode = "password", onClose }: LoginDi
                 </Field>
                 {error ? <ErrorState message={error} /> : null}
                 {message ? <SuccessState message={message} /> : null}
-                <Button disabled={loading} type="submit">
-                  <LogIn className="h-4 w-4" />
+                <Button loading={loading} type="submit">
+                  {!loading ? <LogIn className="h-4 w-4" /> : null}
                   {loading ? t("Entrando...", "Signing in...") : t("Entrar", "Sign in")}
                 </Button>
               </form>
@@ -128,17 +141,15 @@ export function LoginDialog({ open, initialMode = "password", onClose }: LoginDi
                   )}
                 </p>
                 {error ? <ErrorState message={error} /> : null}
-                <button
-                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
-                  onClick={() => {
-                    onClose();
-                    void startAuth0Login();
-                  }}
+                <Button
+                  loading={auth0Loading}
+                  onClick={() => void goToAuth0()}
                   type="button"
+                  variant="secondary"
                 >
-                  <Mail className="h-4 w-4" />
-                  {t("Entrar con Google", "Continue with Google")}
-                </button>
+                  {!auth0Loading ? <Mail className="h-4 w-4" /> : null}
+                  {auth0Loading ? t("Redirigiendo...", "Redirecting...") : t("Entrar con Google", "Continue with Google")}
+                </Button>
               </div>
             )}
           </>

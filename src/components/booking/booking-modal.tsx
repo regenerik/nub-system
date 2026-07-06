@@ -19,7 +19,7 @@ import { usePreferences } from "@/components/preferences-provider";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
-import { EmptyState, ErrorState } from "@/components/ui/status";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/status";
 import { api, ApiError } from "@/lib/api";
 import { appConfig } from "@/lib/config";
 import { appointmentStatusLabel, money, todayInputValue } from "@/lib/format";
@@ -101,11 +101,14 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
   const [success, setSuccess] = useState<Appointment | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [branchDataLoading, setBranchDataLoading] = useState(false);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setBranchesLoading(true);
     api
       .get<ApiList<Branch>>("/public/branches")
       .then((data) => {
@@ -115,12 +118,14 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
           setStep(1);
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : t("No se cargaron sucursales.", "Branches could not be loaded.")));
+      .catch((err) => setError(err instanceof Error ? err.message : t("No se cargaron sucursales.", "Branches could not be loaded.")))
+      .finally(() => setBranchesLoading(false));
   }, [initialBranchId, open, t]);
 
   useEffect(() => {
     if (!branchId) return;
     setError("");
+    setBranchDataLoading(true);
     Promise.all([
       api.get<ApiList<Service>>("/public/services", { query: { branch_id: branchId, type: "main" } }),
       api.get<ApiList<Service>>("/public/services", { query: { branch_id: branchId, type: "extra" } }),
@@ -131,7 +136,8 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
         setExtras(extraData.items);
         setBarbers(barberData.items);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : t("No se cargaron datos.", "Data could not be loaded.")));
+      .catch((err) => setError(err instanceof Error ? err.message : t("No se cargaron datos.", "Data could not be loaded.")))
+      .finally(() => setBranchDataLoading(false));
   }, [branchId, t]);
 
   const selectedBranch = branches.find((item) => item.id === branchId);
@@ -425,6 +431,8 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
               <>
                 {step === 0 ? (
                   <OptionList
+                    loading={branchesLoading}
+                    loadingLabel={t("Cargando sedes...", "Loading branches...")}
                     items={branches}
                     empty={t("No hay sedes disponibles.", "No branches are available.")}
                     render={(branch) => (
@@ -447,6 +455,8 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
 
                 {step === 1 ? (
                   <OptionList
+                    loading={branchDataLoading}
+                    loadingLabel={t("Cargando servicios...", "Loading services...")}
                     items={services}
                     empty={t("No hay servicios principales en esta sede.", "No main services are available at this branch.")}
                     render={(service) => (
@@ -463,6 +473,8 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
                 {step === 2 ? (
                   <div className="grid gap-4">
                     <OptionList
+                      loading={branchDataLoading}
+                      loadingLabel={t("Cargando extras...", "Loading extras...")}
                       items={extras}
                       empty={t("No hay extras disponibles. Podes continuar.", "No extras are available. You can continue.")}
                       render={(extra) => {
@@ -517,6 +529,8 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
                       <ChevronRight className="h-5 w-5 text-steel" />
                     </button>
                     <OptionList
+                      loading={branchDataLoading}
+                      loadingLabel={t("Cargando barberos...", "Loading barbers...")}
                       items={barbers}
                       empty={t("No hay barberos disponibles en esta sede.", "No barbers are available at this branch.")}
                       render={(barber) => (
@@ -703,7 +717,7 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
               <div className="flex items-center gap-4">
                 <span className="text-xs font-bold text-steel">{step + 1}/{stepCount}</span>
                 {footerAction ? (
-                  <Button disabled={footerAction.disabled} type="button" onClick={footerAction.onClick}>
+                  <Button disabled={footerAction.disabled} loading={loading && step === 5} type="button" onClick={footerAction.onClick}>
                     {footerAction.label}
                     {step !== 5 ? <ChevronRight className="h-4 w-4" /> : null}
                   </Button>
@@ -834,14 +848,19 @@ function IconBubble({ children }: { children: React.ReactNode }) {
 }
 
 function OptionList<T>({
+  loading = false,
+  loadingLabel = "Cargando...",
   items,
   render,
   empty,
 }: {
+  loading?: boolean;
+  loadingLabel?: string;
   items: T[];
   render: (item: T) => React.ReactNode;
   empty: string;
 }) {
+  if (loading) return <LoadingState title={loadingLabel} />;
   if (!items.length) return <EmptyState title={empty} />;
   return <div className="grid gap-3">{items.map(render)}</div>;
 }

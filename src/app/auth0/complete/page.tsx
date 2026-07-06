@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { PublicHeader } from "@/components/layout/public-header";
 import { usePreferences } from "@/components/preferences-provider";
@@ -73,6 +74,11 @@ export default function Auth0CompletePage() {
           <p className="mt-2 text-sm text-steel">
             {t("Te estamos llevando a tu panel.", "Taking you to your panel.")}
           </p>
+          {!error ? (
+            <div className="mt-5 flex justify-center">
+              <LoaderCircle className="h-7 w-7 animate-spin text-brass" />
+            </div>
+          ) : null}
           {error ? <div className="mt-4"><ErrorState message={error} /></div> : null}
         </section>
       </main>

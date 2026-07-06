@@ -1,11 +1,16 @@
 import { clsx } from "clsx";
+import { LoaderCircle } from "lucide-react";
 import type { ButtonHTMLAttributes } from "react";
 
 export function Button({
+  children,
   className,
+  disabled,
+  loading = false,
   variant = "primary",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
+  loading?: boolean;
   variant?: "primary" | "secondary" | "danger" | "ghost";
 }) {
   return (
@@ -18,7 +23,11 @@ export function Button({
         variant === "ghost" && "text-steel hover:bg-black/5",
         className,
       )}
+      disabled={disabled || loading}
       {...props}
-    />
+    >
+      {loading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+      {children}
+    </button>
   );
 }

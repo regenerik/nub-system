@@ -14,6 +14,16 @@ export default function Home() {
   const { startAuth0Login, user, redirectForRole } = useAuth();
   const router = useRouter();
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [auth0Loading, setAuth0Loading] = useState(false);
+
+  async function goToAuth0() {
+    setAuth0Loading(true);
+    try {
+      await startAuth0Login();
+    } catch {
+      setAuth0Loading(false);
+    }
+  }
 
   return (
     <>
@@ -45,14 +55,16 @@ export default function Home() {
                 {t("Ir a mi panel", "Go to my panel")}
               </button>
             ) : (
-              <button
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
-                onClick={() => void startAuth0Login()}
+              <Button
+                className="min-h-12"
+                loading={auth0Loading}
+                onClick={() => void goToAuth0()}
                 type="button"
+                variant="secondary"
               >
-                <Mail className="h-4 w-4" />
-                {t("Entrar con Google", "Continue with Google")}
-              </button>
+                {!auth0Loading ? <Mail className="h-4 w-4" /> : null}
+                {auth0Loading ? t("Redirigiendo...", "Redirecting...") : t("Entrar con Google", "Continue with Google")}
+              </Button>
             )}
           </div>
         </section>

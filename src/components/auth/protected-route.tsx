@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
+import { LoadingState } from "@/components/ui/status";
 import type { UserRole } from "@/types/domain";
 
 export function ProtectedRoute({
@@ -27,10 +28,20 @@ export function ProtectedRoute({
   }, [loading, roles, router, user]);
 
   if (loading) {
-    return <div className="p-6 text-sm text-steel">Cargando sesion...</div>;
+    return <RouteLoading title="Cargando sesion..." />;
   }
   if (!user || !roles.includes(user.role)) {
-    return <div className="p-6 text-sm text-steel">Redirigiendo...</div>;
+    return <RouteLoading title="Redirigiendo..." />;
   }
   return <>{children}</>;
+}
+
+function RouteLoading({ title }: { title: string }) {
+  return (
+    <main className="grid min-h-screen place-items-center px-4">
+      <div className="w-full max-w-sm">
+        <LoadingState title={title} />
+      </div>
+    </main>
+  );
 }
