@@ -9,10 +9,16 @@ import { readStoredUser, readToken } from "@/lib/auth-storage";
 import type { User } from "@/types/domain";
 
 export default function Auth0CompletePage() {
-  const { completeAuth0Login, redirectForRole } = useAuth();
+  const { completeAuth0Login, redirectForRole, user } = useAuth();
   const { t } = usePreferences();
   const [error, setError] = useState("");
   const started = useRef(false);
+
+  useEffect(() => {
+    if (user) {
+      redirectToRole(redirectForRole(user.role));
+    }
+  }, [redirectForRole, user]);
 
   useEffect(() => {
     if (started.current) {
@@ -20,17 +26,28 @@ export default function Auth0CompletePage() {
     }
     started.current = true;
     let cancelled = false;
+    const storedUser = readStoredUser<User>();
+    if (readToken() && storedUser) {
+      redirectToRole(redirectForRole(storedUser.role));
+      return;
+    }
+    const sessionWatchdog = window.setInterval(() => {
+      const nextStoredUser = readStoredUser<User>();
+      if (!cancelled && readToken() && nextStoredUser) {
+        redirectToRole(redirectForRole(nextStoredUser.role));
+      }
+    }, 500);
 
     completeAuth0Login()
       .then((user) => {
         if (!cancelled) {
-          window.location.replace(withTrailingSlash(redirectForRole(user.role)));
+          redirectToRole(redirectForRole(user.role));
         }
       })
       .catch((err) => {
         const storedUser = readStoredUser<User>();
         if (!cancelled && readToken() && storedUser) {
-          window.location.replace(withTrailingSlash(redirectForRole(storedUser.role)));
+          redirectToRole(redirectForRole(storedUser.role));
           return;
         }
         if (!cancelled) {
@@ -40,6 +57,7 @@ export default function Auth0CompletePage() {
 
     return () => {
       cancelled = true;
+      window.clearInterval(sessionWatchdog);
     };
   }, [completeAuth0Login, redirectForRole, t]);
 
@@ -62,6 +80,7 @@ export default function Auth0CompletePage() {
   );
 }
 
-function withTrailingSlash(path: string) {
-  return path.endsWith("/") ? path : `${path}/`;
+function redirectToRole(path: string) {
+  const normalized = path.endsWith("/") ? path : `${path}/`;
+  window.location.replace(new URL(normalized, window.location.origin).toString());
 }
