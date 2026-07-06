@@ -173,6 +173,13 @@ export default function RecepcionPage() {
               dateClosure={findDateClosure(selectedDate, dateClosures)}
               reload={loadOperationalData}
               onDone={setSuccess}
+              onAppointmentMoved={(appointmentId, barberId, date, time) => {
+                if (!branchId) return;
+                setAppointments((current) => moveAppointmentInList(current, appointmentId, branchId, barberId, date, time));
+              }}
+              onAppointmentReplaced={(appointment) => {
+                setAppointments((current) => current.map((item) => (item.id === appointment.id ? appointment : item)));
+              }}
               onToggleDateClosure={() => setDateClosureOpen(true)}
               onQuickCreate={(date, time, barberId, forceUnavailable) => {
                 setSelectedDate(date);
@@ -390,6 +397,39 @@ function addMinutesToTime(time: string, minutes: number) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function localDateTimeString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  const second = String(date.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+}
+
+function moveAppointmentInList(
+  appointments: Appointment[],
+  appointmentId: number,
+  branchId: number,
+  barberId: number,
+  date: string,
+  time: string,
+) {
+  return appointments.map((appointment) => {
+    if (appointment.id !== appointmentId) return appointment;
+    const startsAt = new Date(`${date}T${time}:00`);
+    const endsAt = new Date(startsAt.getTime() + minutesBetween(appointment.starts_at, appointment.ends_at) * 60000);
+    return {
+      ...appointment,
+      branch_id: branchId,
+      barber_id: barberId,
+      starts_at: localDateTimeString(startsAt),
+      ends_at: localDateTimeString(endsAt),
+      status: "rescheduled" as const,
+    };
+  });
+}
+
 function minutesFromTime(time: string) {
   const [hour, minute] = time.split(":").map(Number);
   return hour * 60 + minute;
@@ -562,6 +602,8 @@ function Agenda({
   dateClosure,
   reload,
   onDone,
+  onAppointmentMoved,
+  onAppointmentReplaced,
   onToggleDateClosure,
   onQuickCreate,
 }: {
@@ -578,6 +620,8 @@ function Agenda({
   dateClosure: BranchDateClosure | null;
   reload: () => void;
   onDone: (message: string) => void;
+  onAppointmentMoved: (appointmentId: number, barberId: number, date: string, time: string) => void;
+  onAppointmentReplaced: (appointment: Appointment) => void;
   onToggleDateClosure: () => void;
   onQuickCreate: (date: string, time: string, barberId: number, forceUnavailable?: boolean) => void;
 }) {
@@ -613,7 +657,8 @@ function Agenda({
     if (!appointmentId) return;
     if (!branchId) return;
     try {
-      await api.patch(`/appointments/${appointmentId}/reschedule`, {
+      onAppointmentMoved(appointmentId, barberId, selectedDate, time);
+      const updated = await api.patch<Appointment>(`/appointments/${appointmentId}/reschedule`, {
         branch_id: branchId,
         barber_id: barberId,
         date: selectedDate,
@@ -621,10 +666,11 @@ function Agenda({
         force_overlap: true,
         force_unavailable: forceUnavailable,
       });
+      onAppointmentReplaced(updated);
       onDone("Turno movido.");
-      reload();
     } catch (err) {
       onDone(err instanceof Error ? err.message : "No se pudo mover el turno.");
+      reload();
     }
   }
 
@@ -723,6 +769,7 @@ function Agenda({
                 const blocked = Boolean(slotBlocks.length);
                 const softUnavailable = isSoftUnavailableSlot(barberAvailabilities, branchId, barber.id, selectedDate, time);
                 const isCurrentSlot = currentSlotVisible && time === currentSlot;
+                const hasAppointments = Boolean(slotAppointments.length);
                 return (
                   <div
                     key={`${barber.id}-${time}`}
@@ -758,26 +805,28 @@ function Agenda({
                         Bloqueado{block.reason ? `: ${block.reason}` : ""}
                       </div>
                     ))}
-                    <button
-                      type="button"
-                      className="absolute right-1 top-1 z-10 hidden h-6 w-6 rounded-full bg-brass text-xs font-bold text-white disabled:bg-steel group-hover:block"
-                      disabled={Boolean(dateClosure) || blocked}
-                      onClick={() => {
-                        if (softUnavailable && !confirmSoftUnavailableAction()) return;
-                        onQuickCreate(selectedDate, time, barber.id, softUnavailable);
-                      }}
-                      title={
-                        dateClosure
-                          ? "No se pueden crear turnos en una fecha dada de baja."
-                          : blocked
-                            ? "Bloqueo real de agenda."
-                            : softUnavailable
-                              ? "Fuera del horario habitual reducido. Requiere confirmacion."
-                              : "Crear turno en este bloque"
-                      }
-                    >
-                      +
-                    </button>
+                    {!hasAppointments ? (
+                      <button
+                        type="button"
+                        className="absolute right-1 top-1 z-10 hidden h-6 w-6 rounded-full bg-brass text-xs font-bold text-white disabled:bg-steel group-hover:block"
+                        disabled={Boolean(dateClosure) || blocked}
+                        onClick={() => {
+                          if (softUnavailable && !confirmSoftUnavailableAction()) return;
+                          onQuickCreate(selectedDate, time, barber.id, softUnavailable);
+                        }}
+                        title={
+                          dateClosure
+                            ? "No se pueden crear turnos en una fecha dada de baja."
+                            : blocked
+                              ? "Bloqueo real de agenda."
+                              : softUnavailable
+                                ? "Fuera del horario habitual reducido. Requiere confirmacion."
+                                : "Crear turno en este bloque"
+                        }
+                      >
+                        +
+                      </button>
+                    ) : null}
                     {slotAppointments.map((slotAppointment) => (
                       <button
                         key={slotAppointment.id}
