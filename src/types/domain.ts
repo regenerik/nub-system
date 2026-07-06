@@ -244,6 +244,7 @@ export type SalaryPayment = {
 
 export type DashboardStats = {
   revenue_total: number;
+  discount_total: number;
   sales_count: number;
   appointments_total: number;
   appointments_completed: number;

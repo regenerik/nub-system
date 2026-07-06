@@ -29,6 +29,17 @@ type MissingService = { id: number; name: string };
 type BranchScheduleDay = { enabled?: boolean; from?: string; to?: string };
 type BranchSchedule = Record<string, BranchScheduleDay>;
 type QuickCreate = { date: string; time: string; barberId: number; forceUnavailable?: boolean };
+type BillingItem = {
+  key: string;
+  item_type: "service" | "product";
+  item_id: number;
+  label: string;
+  duration?: number;
+  quantity: number;
+  unit_price: number;
+  discount_percent: number;
+  removable: boolean;
+};
 const AGENDA_SLOT_HEIGHT = 64;
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
@@ -483,6 +494,45 @@ function appointmentServiceSummary(appointment: Appointment) {
     ...(appointment.extra_services ?? []).map((extra) => extra.name ?? extra.service?.name ?? `Extra #${extra.service_id}`),
   ];
   return names.join(" + ");
+}
+
+function billingUnitPrice(item: BillingItem) {
+  return Math.max(0, item.unit_price * (1 - item.discount_percent / 100));
+}
+
+function billingLineTotal(item: BillingItem) {
+  return billingUnitPrice(item) * item.quantity;
+}
+
+function billingLineDiscount(item: BillingItem) {
+  return Math.max(0, item.unit_price * item.quantity - billingLineTotal(item));
+}
+
+function appointmentBillingItems(appointment: Appointment): BillingItem[] {
+  return [
+    {
+      key: "primary",
+      item_type: "service",
+      item_id: appointment.primary_service_id,
+      label: appointment.primary_service?.name ?? `Servicio #${appointment.primary_service_id}`,
+      duration: appointment.primary_service?.duration_minutes ?? minutesBetween(appointment.starts_at, appointment.ends_at),
+      quantity: 1,
+      unit_price: Number(appointment.primary_service?.price ?? appointment.total_final ?? appointment.total_estimated ?? 0),
+      discount_percent: 0,
+      removable: true,
+    },
+    ...(appointment.extra_services ?? []).map((extra) => ({
+      key: `extra-${extra.id}`,
+      item_type: "service" as const,
+      item_id: extra.service_id,
+      label: extra.name ?? extra.service?.name ?? `Extra #${extra.service_id}`,
+      duration: extra.duration_minutes ?? extra.duration_minutes_at_booking,
+      quantity: 1,
+      unit_price: Number(extra.price ?? extra.price_at_booking ?? 0),
+      discount_percent: 0,
+      removable: true,
+    })),
+  ];
 }
 
 function ClientAvatar({ appointment }: { appointment: Appointment }) {
@@ -1027,8 +1077,12 @@ function AppointmentModal({
   onCancel: () => void;
   onDone: (message: string) => void;
 }) {
+  const { user } = useAuth();
+  const canApplyDiscounts = user?.role === "admin" || Boolean(user?.can_apply_discounts);
   const [current, setCurrent] = useState(appointment);
-  const [saleItems, setSaleItems] = useState<{ item_type: "service" | "product"; item_id: string; quantity: number }[]>([]);
+  const [billingItems, setBillingItems] = useState<BillingItem[]>(() => appointmentBillingItems(appointment));
+  const [saleItems, setSaleItems] = useState<{ item_type: "service" | "product"; item_id: string; quantity: number; discount_percent: number }[]>([]);
+  const [discountEditor, setDiscountEditor] = useState<{ key: string; value: string } | null>(null);
   const [payments, setPayments] = useState([{ method: "efectivo", amount: "" }]);
   const [notes, setNotes] = useState(appointment.internal_notes ?? "");
   const [error, setError] = useState("");
@@ -1051,6 +1105,9 @@ function AppointmentModal({
   const [importState, setImportState] = useState<"idle" | "importing" | "imported">("idle");
   useEffect(() => {
     setCurrent(appointment);
+    setBillingItems(appointmentBillingItems(appointment));
+    setSaleItems([]);
+    setDiscountEditor(null);
     setNotes(appointment.internal_notes ?? "");
     setSaveState("idle");
     setChargeState("idle");
@@ -1068,19 +1125,125 @@ function AppointmentModal({
       internal_notes: "",
     });
   }, [appointment]);
-  const baseTotal = Number(appointment.total_final ?? appointment.total_estimated ?? 0);
-  const extraTotal = saleItems.reduce((total, item) => {
-    const source = item.item_type === "service" ? services : products;
-    const selected = source.find((option) => option.id === Number(item.item_id));
-    if (!selected) return total;
-    const unit = "price" in selected ? Number(selected.price) : Number(selected.sale_price);
-    return total + unit * item.quantity;
-  }, 0);
-  const grandTotal = baseTotal + extraTotal;
+  function additionalItemsFrom(items: typeof saleItems): BillingItem[] {
+    return items.flatMap((item, index) => {
+      const source = item.item_type === "service" ? services : products;
+      const selected = source.find((option) => option.id === Number(item.item_id));
+      if (!selected) return [];
+      const unit = "price" in selected ? Number(selected.price) : Number(selected.sale_price);
+      return [{
+        key: `additional-${index}`,
+        item_type: item.item_type,
+        item_id: selected.id,
+        label: selected.name,
+        duration: "duration_minutes" in selected ? selected.duration_minutes : undefined,
+        quantity: item.quantity,
+        unit_price: unit,
+        discount_percent: item.discount_percent,
+        removable: true,
+      }];
+    });
+  }
+  const additionalBillingItems = additionalItemsFrom(saleItems);
+  const allBillingItems = [...billingItems, ...additionalBillingItems];
+  const appointmentServiceBillingItems = allBillingItems.filter((item) => item.item_type === "service");
+  const appointmentServicesTotalFinal = appointmentServiceBillingItems.reduce((total, item) => total + billingLineTotal(item), 0);
+  const subtotalBeforeDiscount = allBillingItems.reduce((total, item) => total + item.unit_price * item.quantity, 0);
+  const discountTotal = allBillingItems.reduce((total, item) => total + billingLineDiscount(item), 0);
+  const grandTotal = allBillingItems.reduce((total, item) => total + billingLineTotal(item), 0);
   const paidTotal = payments.reduce((total, payment) => total + parseMoneyInput(payment.amount), 0);
   const houseTip = Math.max(0, paidTotal - grandTotal);
   const pendingTotal = Math.max(0, grandTotal - paidTotal);
   const rescheduleExtraIds = (appointment.extra_services ?? []).map((extra) => extra.service_id).filter(Boolean);
+
+  async function removeBillingItem(key: string) {
+    const nextBillingItems = billingItems.filter((item) => item.key !== key);
+    if (nextBillingItems.length + saleItems.filter((item) => item.item_type === "service" && item.item_id).length <= 0) {
+      setError("El turno debe tener al menos un servicio.");
+      return;
+    }
+    if (!window.confirm("Estas seguro que queres eliminar este item del cobro?")) return;
+    setBillingItems(nextBillingItems);
+    setDiscountEditor((currentEditor) => (currentEditor?.key === key ? null : currentEditor));
+    try {
+      await syncAppointmentItemsFrom(nextBillingItems, saleItems);
+      onDone("Items del turno actualizados.");
+    } catch (err) {
+      setBillingItems(billingItems);
+      setError(err instanceof Error ? err.message : "No se pudieron actualizar los items.");
+    }
+  }
+
+  function removeAdditionalItem(index: number) {
+    if (!window.confirm("Estas seguro que queres eliminar este item del cobro?")) return;
+    setSaleItems((items) => items.filter((_, itemIndex) => itemIndex !== index));
+    setDiscountEditor(null);
+  }
+
+  function applyBillingDiscount(key: string) {
+    const percent = Number(discountEditor?.value ?? 0);
+    if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
+      setError("El descuento debe ser un porcentaje entre 1 y 100.");
+      return;
+    }
+    setBillingItems((items) =>
+      items.map((item) => (item.key === key ? { ...item, discount_percent: percent } : item)),
+    );
+    setDiscountEditor(null);
+  }
+
+  function applyAdditionalDiscount(index: number) {
+    const percent = Number(discountEditor?.value ?? 0);
+    if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
+      setError("El descuento debe ser un porcentaje entre 1 y 100.");
+      return;
+    }
+    setSaleItems((items) =>
+      items.map((item, itemIndex) => (itemIndex === index ? { ...item, discount_percent: percent } : item)),
+    );
+    setDiscountEditor(null);
+  }
+
+  function clearBillingDiscount(key: string) {
+    if (!window.confirm("Estas seguro que queres quitar este descuento?")) return;
+    setBillingItems((items) =>
+      items.map((item) => (item.key === key ? { ...item, discount_percent: 0 } : item)),
+    );
+  }
+
+  function clearAdditionalDiscount(index: number) {
+    if (!window.confirm("Estas seguro que queres quitar este descuento?")) return;
+    setSaleItems((items) =>
+      items.map((item, itemIndex) => (itemIndex === index ? { ...item, discount_percent: 0 } : item)),
+    );
+  }
+
+  async function syncAppointmentItemsFrom(nextBillingItems = billingItems, nextSaleItems = saleItems) {
+    const nextAppointmentServiceItems = [...nextBillingItems, ...additionalItemsFrom(nextSaleItems)].filter(
+      (item) => item.item_type === "service",
+    );
+    const nextAppointmentTotal = nextAppointmentServiceItems.reduce((total, item) => total + billingLineTotal(item), 0);
+    if (!nextAppointmentServiceItems.length) {
+      throw new Error("El turno debe tener al menos un servicio.");
+    }
+    const updated = await api.patch<Appointment>(`/appointments/${appointment.id}/items`, {
+      service_ids: nextAppointmentServiceItems.flatMap((item) =>
+        Array.from({ length: Math.max(1, item.quantity) }, () => item.item_id),
+      ),
+      total_final: nextAppointmentTotal,
+    });
+    setCurrent(updated);
+    setBillingItems(appointmentBillingItems(updated).map((item, index) => ({
+      ...item,
+      discount_percent: nextAppointmentServiceItems[index]?.discount_percent ?? 0,
+    })));
+    setSaleItems(nextSaleItems.filter((item) => item.item_type === "product"));
+    return updated;
+  }
+
+  async function syncAppointmentItems() {
+    return syncAppointmentItemsFrom();
+  }
 
   useEffect(() => {
     if (!showReschedule || !rescheduleForm.branch_id) return;
@@ -1157,7 +1320,8 @@ function AppointmentModal({
     try {
       setError("");
       setSaveState("saving");
-      const updated = await api.patch<Appointment>(`/appointments/${appointment.id}`, { internal_notes: notes, total_final: grandTotal });
+      await syncAppointmentItems();
+      const updated = await api.patch<Appointment>(`/appointments/${appointment.id}`, { internal_notes: notes, total_final: appointmentServicesTotalFinal });
       setCurrent(updated);
       setSaveState("saved");
       onDone("Turno actualizado.");
@@ -1172,28 +1336,24 @@ function AppointmentModal({
     setError("");
     setChargeState("charging");
     try {
-    const extraItems = saleItems
-      .filter((item) => item.item_id)
-      .map((item) =>
-        item.item_type === "service"
-          ? { item_type: "service", service_id: Number(item.item_id), quantity: item.quantity }
-          : { item_type: "product", product_id: Number(item.item_id), quantity: item.quantity },
-      );
-    const items = [
-      { item_type: "service", service_id: appointment.primary_service_id, quantity: 1, unit_price: baseTotal },
-      ...extraItems,
-    ];
+    await syncAppointmentItems();
+    const items = allBillingItems.map((item) =>
+      item.item_type === "service"
+        ? { item_type: "service", service_id: item.item_id, quantity: item.quantity, unit_price: item.unit_price }
+        : { item_type: "product", product_id: item.item_id, quantity: item.quantity, unit_price: item.unit_price },
+    );
     const sale = await api.post<{ id: number }>("/sales", {
       branch_id: appointment.branch_id,
       client_id: appointment.client_id,
       appointment_id: appointment.id,
       items,
+      discount_amount: discountTotal,
       payment: payments[0] ? { method: payments[0].method, amount: parseMoneyInput(payments[0].amount) } : undefined,
     });
     for (const payment of payments.slice(1)) {
       await api.post(`/sales/${sale.id}/payments`, { method: payment.method, amount: parseMoneyInput(payment.amount) });
     }
-    const updated = await api.patch<Appointment>(`/appointments/${appointment.id}`, { total_final: grandTotal });
+    const updated = await api.patch<Appointment>(`/appointments/${appointment.id}`, { total_final: appointmentServicesTotalFinal });
     setCurrent(updated);
     setChargeState("charged");
     onDone("Cobro registrado.");
@@ -1375,36 +1535,63 @@ function AppointmentModal({
           <div className="rounded-md border border-black/10 p-3 text-sm">
             <p className="font-bold text-ink">Items del turno</p>
             <div className="mt-2 grid gap-2">
-              <div className="flex justify-between gap-3">
-                <span>{current.primary_service?.name ?? `Servicio #${current.primary_service_id}`} ({current.primary_service?.duration_minutes ?? minutesBetween(current.starts_at, current.ends_at)} min)</span>
-                <span>{money(current.primary_service?.price ?? baseTotal)}</span>
-              </div>
-              {(current.extra_services ?? []).map((extra) => (
-                <div key={extra.id} className="flex justify-between gap-3 text-steel">
-                  <span>{extra.name ?? extra.service?.name ?? `Extra #${extra.service_id}`} ({extra.duration_minutes ?? extra.duration_minutes_at_booking} min)</span>
-                  <span>{money(extra.price ?? extra.price_at_booking)}</span>
-                </div>
+              {billingItems.map((item) => (
+                <BillingItemRow
+                  key={item.key}
+                  canApplyDiscounts={canApplyDiscounts}
+                  discountEditor={discountEditor}
+                  item={item}
+                  onApplyDiscount={() => applyBillingDiscount(item.key)}
+                  onCancelDiscount={() => setDiscountEditor(null)}
+                  onClearDiscount={() => clearBillingDiscount(item.key)}
+                  onEditDiscount={() => setDiscountEditor({ key: item.key, value: item.discount_percent ? String(item.discount_percent) : "" })}
+                  onRemove={() => removeBillingItem(item.key)}
+                  onUpdateDiscountValue={(value) => setDiscountEditor({ key: item.key, value })}
+                />
               ))}
-              <div className="border-t border-black/10 pt-2 font-bold text-ink">Total acumulado: {money(grandTotal)}</div>
+              <div className="border-t border-black/10 pt-2 font-bold text-ink">
+                <p>Subtotal: {money(subtotalBeforeDiscount)}</p>
+                {discountTotal > 0 ? <p className="text-brass">Descuentos: -{money(discountTotal)}</p> : null}
+                <p>Total acumulado: {money(grandTotal)}</p>
+              </div>
             </div>
           </div>
           <div className="rounded-md border border-black/10 p-3">
             <p className="font-bold text-ink">Productos y servicios adicionales</p>
             <div className="mt-3 grid gap-2">
-              {saleItems.map((item, index) => (
-                <div key={index} className="grid gap-2 sm:grid-cols-[130px_1fr_90px]">
-                  <Select value={item.item_type} onChange={(event) => setSaleItems((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, item_type: event.target.value as "service" | "product", item_id: "" } : row))}>
-                    <option value="service">Servicio</option>
-                    <option value="product">Producto</option>
-                  </Select>
-                  <Select value={item.item_id} onChange={(event) => setSaleItems((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, item_id: event.target.value } : row))}>
-                    <option value="">Seleccionar</option>
-                    {(item.item_type === "service" ? services : products).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-                  </Select>
-                  <Input type="number" min={1} value={item.quantity} onChange={(event) => setSaleItems((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: Number(event.target.value) } : row))} />
-                </div>
-              ))}
-              <Button type="button" variant="secondary" onClick={() => setSaleItems((current) => [...current, { item_type: "service", item_id: "", quantity: 1 }])}>Agregar item</Button>
+              {saleItems.map((item, index) => {
+                const previewItem = additionalBillingItems.find((billingItem) => billingItem.key === `additional-${index}`);
+                return (
+                  <div key={index} className="grid gap-2 rounded-md border border-black/10 p-2 sm:grid-cols-[130px_1fr_90px_auto]">
+                    <Select value={item.item_type} onChange={(event) => setSaleItems((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, item_type: event.target.value as "service" | "product", item_id: "", discount_percent: 0 } : row))}>
+                      <option value="service">Servicio</option>
+                      <option value="product">Producto</option>
+                    </Select>
+                    <Select value={item.item_id} onChange={(event) => setSaleItems((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, item_id: event.target.value } : row))}>
+                      <option value="">Seleccionar</option>
+                      {(item.item_type === "service" ? services : products).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                    </Select>
+                    <Input type="number" min={1} value={item.quantity} onChange={(event) => setSaleItems((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: Number(event.target.value) } : row))} />
+                    <Button type="button" variant="danger" onClick={() => removeAdditionalItem(index)}>X</Button>
+                    {previewItem ? (
+                      <div className="sm:col-span-4">
+                        <BillingItemRow
+                          canApplyDiscounts={canApplyDiscounts}
+                          discountEditor={discountEditor}
+                          item={previewItem}
+                          onApplyDiscount={() => applyAdditionalDiscount(index)}
+                          onCancelDiscount={() => setDiscountEditor(null)}
+                          onClearDiscount={() => clearAdditionalDiscount(index)}
+                          onEditDiscount={() => setDiscountEditor({ key: `additional-${index}`, value: item.discount_percent ? String(item.discount_percent) : "" })}
+                          onRemove={() => removeAdditionalItem(index)}
+                          onUpdateDiscountValue={(value) => setDiscountEditor({ key: `additional-${index}`, value })}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+              <Button type="button" variant="secondary" onClick={() => setSaleItems((current) => [...current, { item_type: "service", item_id: "", quantity: 1, discount_percent: 0 }])}>Agregar item</Button>
             </div>
           </div>
           <div className="rounded-md border border-black/10 p-3">
@@ -1470,6 +1657,72 @@ function isMissingServiceError(error: unknown): error is ApiError & { details: {
   if (!(error instanceof ApiError) || !error.details || typeof error.details !== "object") return false;
   const details = error.details as { code?: unknown; missing_services?: unknown };
   return details.code === "service_missing_in_branch" && Array.isArray(details.missing_services);
+}
+
+function BillingItemRow({
+  item,
+  canApplyDiscounts,
+  discountEditor,
+  onEditDiscount,
+  onUpdateDiscountValue,
+  onApplyDiscount,
+  onCancelDiscount,
+  onClearDiscount,
+  onRemove,
+}: {
+  item: BillingItem;
+  canApplyDiscounts: boolean;
+  discountEditor: { key: string; value: string } | null;
+  onEditDiscount: () => void;
+  onUpdateDiscountValue: (value: string) => void;
+  onApplyDiscount: () => void;
+  onCancelDiscount: () => void;
+  onClearDiscount: () => void;
+  onRemove: () => void;
+}) {
+  const editing = discountEditor?.key === item.key;
+  const originalTotal = item.unit_price * item.quantity;
+  const currentTotal = billingLineTotal(item);
+  return (
+    <div className="grid gap-2 rounded-md bg-smoke/60 p-2 text-steel sm:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="min-w-0">
+        <p className="font-semibold text-ink">
+          {item.label}{item.duration ? ` (${item.duration} min)` : ""}{item.quantity > 1 ? ` x${item.quantity}` : ""}
+        </p>
+        {item.discount_percent > 0 ? (
+          <p className="text-xs text-brass">
+            Descuento {item.discount_percent}%: {money(originalTotal)} a {money(currentTotal)}
+          </p>
+        ) : null}
+        {editing ? (
+          <div className="mt-2 grid gap-2 sm:grid-cols-[120px_auto_auto]">
+            <Input
+              inputMode="numeric"
+              max={100}
+              min={1}
+              placeholder="%"
+              type="number"
+              value={discountEditor.value}
+              onChange={(event) => onUpdateDiscountValue(event.target.value)}
+            />
+            <Button type="button" onClick={onApplyDiscount}>Aplicar</Button>
+            <Button type="button" variant="secondary" onClick={onCancelDiscount}>Cancelar</Button>
+          </div>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-start justify-end gap-2">
+        <span className="min-w-24 text-right font-bold text-ink">{money(currentTotal)}</span>
+        {canApplyDiscounts && !editing ? (
+          item.discount_percent > 0 ? (
+            <Button type="button" variant="secondary" onClick={onClearDiscount}>Quitar descuento</Button>
+          ) : (
+            <Button type="button" variant="secondary" onClick={onEditDiscount}>-%</Button>
+          )
+        ) : null}
+        <Button type="button" variant="danger" onClick={onRemove}>X</Button>
+      </div>
+    </div>
+  );
 }
 
 function ImportServicesModal({

@@ -228,6 +228,7 @@ function Dashboard({
   const kpis = stats
     ? [
         ["Facturacion", money(stats.revenue_total)],
+        ["Descuentos", money(stats.discount_total ?? 0)],
         ["Clientes", stats.clients_total],
         ["Turnos", stats.appointments_total],
         ["Completados", stats.appointments_completed],
