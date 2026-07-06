@@ -14,6 +14,8 @@ import { api } from "@/lib/api";
 import { appointmentStatusLabel, money, shortDate } from "@/lib/format";
 import type { ApiList, Appointment, Client } from "@/types/domain";
 
+const BARBERSHOP_WHATSAPP_NUMBER = "5491121893986";
+
 export default function ClientePage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [profile, setProfile] = useState<Client | null>(null);
@@ -95,11 +97,12 @@ export default function ClientePage() {
             <>
               <AppointmentList
                 canCancel
+                clientName={profile?.full_name}
                 onCancel={setCancelTarget}
                 title="Proximos turnos"
                 items={future}
               />
-              <AppointmentList title="Historial" items={past} />
+              <AppointmentList clientName={profile?.full_name} title="Historial" items={past} />
             </>
           )}
         </div>
@@ -211,11 +214,13 @@ function ProfileCard({
 function AppointmentList({
   title,
   items,
+  clientName,
   canCancel = false,
   onCancel,
 }: {
   title: string;
   items: Appointment[];
+  clientName?: string;
   canCancel?: boolean;
   onCancel?: (appointment: Appointment) => void;
 }) {
@@ -253,6 +258,12 @@ function AppointmentList({
                 <a href={googleCalendarUrl(appointment)} target="_blank" rel="noreferrer">
                   <Button className="w-full sm:w-auto" type="button" variant="secondary">
                     Abrir en Google Calendar
+                  </Button>
+                </a>
+                <a href={whatsappContactUrl(appointment, clientName)} target="_blank" rel="noreferrer">
+                  <Button className="w-full bg-[#25D366] text-white hover:brightness-95 sm:w-auto" type="button">
+                    <WhatsAppIcon className="h-4 w-4" />
+                    Contactanos
                   </Button>
                 </a>
                 {canCancel ? (
@@ -299,6 +310,14 @@ function BarberBadge({ appointment }: { appointment: Appointment }) {
         <span className="block truncate font-bold text-ink">{name}</span>
       </span>
     </div>
+  );
+}
+
+function WhatsAppIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="currentColor" viewBox="0 0 24 24">
+      <path d="M12.04 2.25A9.7 9.7 0 0 0 3.7 16.9L2.75 21.75l4.97-1.17a9.7 9.7 0 1 0 4.32-18.33Zm0 1.86a7.84 7.84 0 1 1-3.84 14.68l-.31-.18-2.78.65.53-2.72-.2-.32a7.84 7.84 0 0 1 6.6-12.11Zm-3.4 3.86c-.18 0-.47.07-.72.34-.25.27-.94.92-.94 2.24 0 1.31.97 2.59 1.1 2.77.14.18 1.87 3 4.62 4.09 2.29.9 2.76.72 3.25.68.5-.05 1.61-.66 1.84-1.3.23-.64.23-1.18.16-1.3-.07-.12-.25-.19-.53-.33-.28-.14-1.61-.8-1.86-.89-.25-.09-.44-.14-.62.14-.18.27-.71.88-.87 1.06-.16.18-.32.21-.6.07-.28-.14-1.17-.43-2.23-1.38-.83-.74-1.39-1.65-1.55-1.93-.16-.28-.02-.43.12-.57.13-.13.28-.32.41-.48.14-.16.18-.28.28-.46.09-.18.05-.34-.02-.48-.07-.14-.62-1.49-.85-2.03-.22-.54-.45-.46-.62-.47l-.53-.01Z" />
+    </svg>
   );
 }
 
@@ -419,4 +438,11 @@ function googleCalendarUrl(appointment: Appointment) {
 function googleMapsUrl(appointment: Appointment) {
   const query = [appointment.branch?.name, appointment.branch?.address].filter(Boolean).join(" ");
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function whatsappContactUrl(appointment: Appointment, clientName?: string) {
+  const customerName = clientName || appointment.client?.full_name || "cliente";
+  const barberName = appointment.barber?.full_name || "el barbero asignado";
+  const message = `Hola mi nombre es ${customerName}. Tengo turno el dia ${shortDate(appointment.starts_at)} con el barbero ${barberName} y tengo una duda...`;
+  return `https://wa.me/${BARBERSHOP_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
 }
