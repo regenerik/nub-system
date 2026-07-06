@@ -31,6 +31,12 @@ type Slot = {
   ends_at: string;
 };
 
+type AvailabilitySummaryDay = {
+  date: string;
+  count: number;
+  closed?: boolean;
+};
+
 type BookingModalProps = {
   open: boolean;
   initialBranchId?: number | null;
@@ -77,6 +83,7 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
   const [extras, setExtras] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [availabilityByDate, setAvailabilityByDate] = useState<Record<string, Slot[]>>({});
+  const [availabilitySummaryByDate, setAvailabilitySummaryByDate] = useState<Record<string, AvailabilitySummaryDay>>({});
   const [branchId, setBranchId] = useState<number | null>(initialBranchId ?? null);
   const [serviceId, setServiceId] = useState<number | null>(null);
   const [extraIds, setExtraIds] = useState<number[]>([]);
@@ -95,6 +102,7 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -131,7 +139,7 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
   const selectedExtras = extras.filter((item) => extraIds.includes(item.id));
   const selectedBarber = barbers.find((item) => item.id === barberId);
   const selectedDateSlots = availabilityByDate[selectedDate] ?? [];
-  const maxCapacity = Math.max(1, ...Object.values(availabilityByDate).map((items) => items.length));
+  const maxCapacity = Math.max(1, ...Object.values(availabilitySummaryByDate).map((item) => item.count));
 
   const totalPrice =
     Number(selectedService?.price ?? 0) + selectedExtras.reduce((sum, item) => sum + Number(item.price), 0);
@@ -181,43 +189,33 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
 
   useEffect(() => {
     if (!open || step !== 4 || !branchId || !serviceId) return;
-    const monthKeys = calendarDays
-      .filter((day) => day.getMonth() === monthDate.getMonth() && dateKey(day) >= todayInputValue())
-      .map(dateKey);
-    const missing = monthKeys.filter((key) => availabilityByDate[key] === undefined);
-    if (!missing.length) return;
-
+    if (availabilityByDate[selectedDate] !== undefined) return;
     let cancelled = false;
-    const orderedMissing = [
-      selectedDate,
-      ...missing.filter((key) => key !== selectedDate),
-    ].filter((key) => monthKeys.includes(key) && availabilityByDate[key] === undefined);
 
     setAvailabilityLoading(true);
-    async function loadMonthAvailability() {
+    async function loadSelectedDateAvailability() {
       try {
-        const results = await Promise.all(
-          orderedMissing.map(async (key) => {
-            const data = await api.get<ApiList<Slot>>("/public/availability", {
-            query: {
-              branch_id: branchId,
-              service_id: serviceId,
-              extra_service_ids: extraIds.map(String),
-              barber_id: barberId,
-              date: key,
-            },
-          });
-            return [key, data.items] as const;
-          }),
-        );
-        if (cancelled) return;
-        setAvailabilityByDate((current) => {
-          const next = { ...current };
-          results.forEach(([key, items]) => {
-            next[key] = items;
-          });
-          return next;
+        const data = await api.get<ApiList<Slot>>("/public/availability", {
+          query: {
+            branch_id: branchId,
+            service_id: serviceId,
+            extra_service_ids: extraIds.map(String),
+            barber_id: barberId,
+            date: selectedDate,
+          },
         });
+        if (cancelled) return;
+        setAvailabilityByDate((current) => ({
+          ...current,
+          [selectedDate]: data.items,
+        }));
+        setAvailabilitySummaryByDate((current) => ({
+          ...current,
+          [selectedDate]: {
+            date: selectedDate,
+            count: data.items.length,
+          },
+        }));
       } catch (err) {
         setError(err instanceof Error ? err.message : t("No se pudo cargar disponibilidad.", "Availability could not be loaded."));
       } finally {
@@ -225,19 +223,17 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
       }
     }
 
-    loadMonthAvailability();
+    loadSelectedDateAvailability();
 
     return () => {
       cancelled = true;
     };
-    // availabilityByDate is intentionally read as a cache here; including it would restart the progressive month load after every day.
+    // availabilityByDate is intentionally read as a cache here; including it would restart the day load after it resolves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     barberId,
     branchId,
-    calendarDays,
     extraIds,
-    monthDate,
     open,
     selectedDate,
     serviceId,
@@ -246,7 +242,56 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
   ]);
 
   useEffect(() => {
+    if (!open || step !== 4 || !branchId || !serviceId) return;
+    let cancelled = false;
+    const month = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, "0")}`;
+
+    setSummaryLoading(true);
+    async function loadMonthSummary() {
+      try {
+        const data = await api.get<ApiList<AvailabilitySummaryDay>>("/public/availability-summary", {
+            query: {
+              branch_id: branchId,
+              service_id: serviceId,
+              extra_service_ids: extraIds.map(String),
+              barber_id: barberId,
+              month,
+            },
+          });
+        if (cancelled) return;
+        setAvailabilitySummaryByDate((current) => {
+          const next = { ...current };
+          data.items.forEach((item) => {
+            next[item.date] = item;
+          });
+          return next;
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("No se pudo cargar disponibilidad.", "Availability could not be loaded."));
+      } finally {
+        if (!cancelled) setSummaryLoading(false);
+      }
+    }
+
+    loadMonthSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    barberId,
+    branchId,
+    extraIds,
+    monthDate,
+    open,
+    serviceId,
+    step,
+    t,
+  ]);
+
+  useEffect(() => {
     setAvailabilityByDate({});
+    setAvailabilitySummaryByDate({});
     setSlot(null);
   }, [barberId, branchId, extraIds, serviceId]);
 
@@ -528,21 +573,32 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
                       <div className="mt-2 grid grid-cols-7 gap-2">
                         {calendarDays.map((day) => {
                           const key = dateKey(day);
-                          const count = availabilityByDate[key]?.length ?? 0;
+                          const summary = availabilitySummaryByDate[key];
+                          const count = summary?.count ?? 0;
+                          const hasSummary = summary !== undefined;
                           const isCurrentMonth = day.getMonth() === monthDate.getMonth();
                           const isPast = key < todayInputValue();
                           const selected = key === selectedDate;
+                          const unavailable = hasSummary && count === 0;
                           return (
                             <button
                               key={key}
-                              title={t(`${count} disponibles`, `${count} available`)}
+                              title={
+                                hasSummary
+                                  ? t(`${count} disponibles`, `${count} available`)
+                                  : t("Toca para consultar horarios", "Tap to check times")
+                              }
                               className={clsx(
                                 "relative min-h-12 rounded-md text-sm font-bold transition",
                                 !isCurrentMonth && "opacity-35",
-                                isPast || count === 0 ? "bg-smoke text-steel" : capacityClass(count, maxCapacity),
+                                isPast || unavailable
+                                  ? "bg-smoke text-steel"
+                                  : hasSummary
+                                    ? capacityClass(count, maxCapacity)
+                                    : "bg-white text-ink ring-1 ring-black/10 hover:bg-smoke",
                                 selected && "ring-2 ring-brass",
                               )}
-                              disabled={isPast || count === 0}
+                              disabled={isPast || unavailable}
                               onClick={() => {
                                 setSelectedDate(key);
                                 setSlot(null);
@@ -550,7 +606,7 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
                               type="button"
                             >
                               {day.getDate()}
-                              {!isPast && count > 0 ? (
+                              {!isPast && hasSummary && count > 0 ? (
                                 <span className="absolute inset-x-2 bottom-1 h-1 rounded-full bg-sage" />
                               ) : null}
                             </button>
@@ -558,10 +614,14 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
                         })}
                       </div>
                       {availabilityByDate[selectedDate] === undefined ? (
-                        <p className="mt-3 text-center text-sm text-steel">{t("Buscando horarios...", "Looking for times...")}</p>
-                      ) : availabilityLoading ? (
                         <p className="mt-3 text-center text-sm text-steel">
-                          {t("Actualizando capacidad del mes...", "Updating month capacity...")}
+                          {availabilityLoading
+                            ? t("Buscando horarios...", "Looking for times...")
+                            : t("Toca un dia para ver horarios.", "Tap a day to see times.")}
+                        </p>
+                      ) : summaryLoading ? (
+                        <p className="mt-3 text-center text-sm text-steel">
+                          {t("Actualizando referencia del mes...", "Updating month reference...")}
                         </p>
                       ) : null}
                     </div>
