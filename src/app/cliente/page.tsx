@@ -35,12 +35,23 @@ export default function ClientePage() {
   useEffect(load, [load]);
 
   useEffect(() => {
+    function setFromValue(value?: string) {
+      setSection(value === "perfil" || window.location.hash === "#mi-perfil" ? "perfil" : "reservas");
+    }
     function syncSectionFromHash() {
-      setSection(window.location.hash === "#mi-perfil" ? "perfil" : "reservas");
+      setFromValue();
+    }
+    function syncSectionFromEvent(event: Event) {
+      const detail = (event as CustomEvent<"reservas" | "perfil">).detail;
+      setFromValue(detail);
     }
     syncSectionFromHash();
     window.addEventListener("hashchange", syncSectionFromHash);
-    return () => window.removeEventListener("hashchange", syncSectionFromHash);
+    window.addEventListener("nub:client-section-change", syncSectionFromEvent);
+    return () => {
+      window.removeEventListener("hashchange", syncSectionFromHash);
+      window.removeEventListener("nub:client-section-change", syncSectionFromEvent);
+    };
   }, []);
 
   const future = appointments.filter((item) => new Date(item.starts_at) >= new Date());

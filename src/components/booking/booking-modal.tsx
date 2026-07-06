@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import {
   BadgeCheck,
@@ -15,13 +16,14 @@ import {
   X,
 } from "lucide-react";
 import { usePreferences } from "@/components/preferences-provider";
+import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState } from "@/components/ui/status";
 import { api, ApiError } from "@/lib/api";
 import { appConfig } from "@/lib/config";
 import { appointmentStatusLabel, money, todayInputValue } from "@/lib/format";
-import type { ApiList, Appointment, Barber, Branch, Service } from "@/types/domain";
+import type { ApiList, Appointment, Barber, Branch, Client, Service } from "@/types/domain";
 
 type Slot = {
   barber_id: number;
@@ -67,6 +69,8 @@ const timeGrid = buildTimeGrid();
 
 export function BookingModal({ open, initialBranchId, onClose }: BookingModalProps) {
   const { locale, t } = usePreferences();
+  const { user, redirectForRole } = useAuth();
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -137,6 +141,31 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
 
   const canConfirm = Boolean(client.first_name && client.last_name && client.email && client.phone && slot);
 
+  useEffect(() => {
+    if (!open || !user) return;
+    const [firstName, ...rest] = user.full_name.split(" ");
+    setClient((current) => ({
+      ...current,
+      first_name: current.first_name || firstName || "",
+      last_name: current.last_name || rest.join(" "),
+      email: user.email,
+    }));
+    if (user.role === "cliente") {
+      api
+        .get<Client>("/client/me/profile")
+        .then((profile) => {
+          setClient((current) => ({
+            ...current,
+            first_name: current.first_name || profile.first_name || profile.full_name?.split(" ")[0] || "",
+            last_name: current.last_name || profile.last_name || profile.full_name?.split(" ").slice(1).join(" ") || "",
+            email: profile.email || user.email,
+            phone: current.phone || profile.phone || "",
+          }));
+        })
+        .catch(() => undefined);
+    }
+  }, [open, user]);
+
   const calendarDays = useMemo(() => {
     const year = monthDate.getFullYear();
     const month = monthDate.getMonth();
@@ -167,9 +196,9 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
     setAvailabilityLoading(true);
     async function loadMonthAvailability() {
       try {
-        for (const key of orderedMissing) {
-          if (cancelled) return;
-          const data = await api.get<ApiList<Slot>>("/public/availability", {
+        const results = await Promise.all(
+          orderedMissing.map(async (key) => {
+            const data = await api.get<ApiList<Slot>>("/public/availability", {
             query: {
               branch_id: branchId,
               service_id: serviceId,
@@ -178,9 +207,17 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
               date: key,
             },
           });
-          if (cancelled) return;
-          setAvailabilityByDate((current) => ({ ...current, [key]: data.items }));
-        }
+            return [key, data.items] as const;
+          }),
+        );
+        if (cancelled) return;
+        setAvailabilityByDate((current) => {
+          const next = { ...current };
+          results.forEach(([key, items]) => {
+            next[key] = items;
+          });
+          return next;
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : t("No se pudo cargar disponibilidad.", "Availability could not be loaded."));
       } finally {
@@ -328,7 +365,17 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8">
             {error ? <ErrorState message={error} /> : null}
             {success ? (
-              <SuccessView appointment={success} onClose={onClose} />
+              <SuccessView
+                appointment={success}
+                onClose={() => {
+                  if (user) {
+                    onClose();
+                    router.push(redirectForRole(user.role));
+                    return;
+                  }
+                  onClose();
+                }}
+              />
             ) : (
               <>
                 {step === 0 ? (
@@ -569,7 +616,13 @@ export function BookingModal({ open, initialBranchId, onClose }: BookingModalPro
                         <Input value={client.phone} onChange={(event) => setClient({ ...client, phone: event.target.value })} required />
                       </Field>
                       <Field label="Email">
-                        <Input value={client.email} onChange={(event) => setClient({ ...client, email: event.target.value })} type="email" required />
+                        <Input
+                          disabled={Boolean(user?.email)}
+                          value={client.email}
+                          onChange={(event) => setClient({ ...client, email: event.target.value })}
+                          type="email"
+                          required
+                        />
                       </Field>
                     </div>
                     <Field label={t("Comentario adicional", "Additional comment")}>

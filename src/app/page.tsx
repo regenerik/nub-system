@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarPlus, Mail } from "lucide-react";
+import { CalendarPlus, LayoutDashboard, Mail } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { BookingModal } from "@/components/booking/booking-modal";
 import { PublicHeader } from "@/components/layout/public-header";
 import { usePreferences } from "@/components/preferences-provider";
@@ -10,7 +11,8 @@ import { useAuth } from "@/components/auth/auth-provider";
 
 export default function Home() {
   const { t } = usePreferences();
-  const { startAuth0Login } = useAuth();
+  const { startAuth0Login, user, redirectForRole } = useAuth();
+  const router = useRouter();
   const [bookingOpen, setBookingOpen] = useState(false);
 
   return (
@@ -33,14 +35,25 @@ export default function Home() {
               <CalendarPlus className="h-5 w-5" />
               {t("Reservar turno", "Book now")}
             </Button>
-            <button
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
-              onClick={() => void startAuth0Login()}
-              type="button"
-            >
-              <Mail className="h-4 w-4" />
-              {t("Entrar con Google", "Continue with Google")}
-            </button>
+            {user ? (
+              <button
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
+                onClick={() => router.push(redirectForRole(user.role))}
+                type="button"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                {t("Ir a mi panel", "Go to my panel")}
+              </button>
+            ) : (
+              <button
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"
+                onClick={() => void startAuth0Login()}
+                type="button"
+              >
+                <Mail className="h-4 w-4" />
+                {t("Entrar con Google", "Continue with Google")}
+              </button>
+            )}
           </div>
         </section>
       </main>

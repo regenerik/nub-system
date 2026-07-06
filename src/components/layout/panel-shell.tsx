@@ -29,6 +29,12 @@ export function PanelShell({
   const isClient = user?.role === "cliente";
   const avatarUrl = profileImageUrl || user?.profile_image_url;
 
+  function openClientSection(section: "reservas" | "perfil") {
+    const hash = section === "perfil" ? "mi-perfil" : "mis-reservas";
+    window.history.pushState(null, "", `/cliente/#${hash}`);
+    window.dispatchEvent(new CustomEvent("nub:client-section-change", { detail: section }));
+  }
+
   useEffect(() => {
     if (user?.role !== "admin" && user?.role !== "recepcion") return;
     const refreshReprogramCount = () => {
@@ -55,12 +61,20 @@ export function PanelShell({
                 <Avatar imageUrl={avatarUrl} fallback={user?.full_name} sizeClassName="h-16 w-16" />
               </div>
               <nav className="grid gap-2 text-sm">
-                <Link href="/cliente#mis-reservas" className="block w-full rounded-md px-2 py-2 hover:bg-smoke">
+                <button
+                  className="block w-full rounded-md px-2 py-2 text-left hover:bg-smoke"
+                  onClick={() => openClientSection("reservas")}
+                  type="button"
+                >
                   Mis reservas
-                </Link>
-                <Link href="/cliente#mi-perfil" className="block w-full rounded-md px-2 py-2 hover:bg-smoke">
+                </button>
+                <button
+                  className="block w-full rounded-md px-2 py-2 text-left hover:bg-smoke"
+                  onClick={() => openClientSection("perfil")}
+                  type="button"
+                >
                   Mi perfil
-                </Link>
+                </button>
               </nav>
             </div>
           ) : (
