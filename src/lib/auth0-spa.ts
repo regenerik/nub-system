@@ -1,6 +1,7 @@
 import { appConfig } from "@/lib/config";
 
 const transactionKey = "nub-auth0-pkce";
+let completionPromise: Promise<string> | null = null;
 
 type Auth0Transaction = {
   state: string;
@@ -77,6 +78,18 @@ function readTransaction(): Auth0Transaction {
 }
 
 export async function completeAuth0Login() {
+  if (completionPromise) {
+    return completionPromise;
+  }
+  completionPromise = exchangeAuth0Code();
+  try {
+    return await completionPromise;
+  } finally {
+    completionPromise = null;
+  }
+}
+
+async function exchangeAuth0Code() {
   const params = new URLSearchParams(window.location.search);
   const error = params.get("error");
   if (error) {

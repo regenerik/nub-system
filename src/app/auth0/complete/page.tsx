@@ -1,19 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { PublicHeader } from "@/components/layout/public-header";
 import { usePreferences } from "@/components/preferences-provider";
 import { ErrorState } from "@/components/ui/status";
+import { readStoredUser, readToken } from "@/lib/auth-storage";
+import type { User } from "@/types/domain";
 
 export default function Auth0CompletePage() {
   const { completeAuth0Login, redirectForRole } = useAuth();
   const { t } = usePreferences();
   const router = useRouter();
   const [error, setError] = useState("");
+  const started = useRef(false);
 
   useEffect(() => {
+    if (started.current) {
+      return;
+    }
+    started.current = true;
     let cancelled = false;
 
     completeAuth0Login()
@@ -23,6 +30,11 @@ export default function Auth0CompletePage() {
         }
       })
       .catch((err) => {
+        const storedUser = readStoredUser<User>();
+        if (!cancelled && readToken() && storedUser) {
+          router.replace(redirectForRole(storedUser.role));
+          return;
+        }
         if (!cancelled) {
           setError(err instanceof Error ? err.message : t("No se pudo completar Auth0.", "Could not complete Auth0 sign-in."));
         }
