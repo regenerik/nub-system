@@ -166,6 +166,7 @@ export type Appointment = {
   total_estimated: number;
   total_final?: number | null;
   client?: Client;
+  barber?: Barber;
   primary_service?: Service;
   extra_services?: Array<AppointmentExtraService & { name?: string; price?: number; duration_minutes?: number; service?: Service }>;
   sale?: Sale | null;

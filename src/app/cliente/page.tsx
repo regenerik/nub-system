@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { AlertTriangle, CalendarX, UserRound, X } from "lucide-react";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { PanelShell } from "@/components/layout/panel-shell";
 import { usePreferences } from "@/components/preferences-provider";
@@ -10,7 +11,6 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import { ImageUploader } from "@/components/ui/image-uploader";
 import { EmptyState, ErrorState } from "@/components/ui/status";
 import { api } from "@/lib/api";
-import { appConfig } from "@/lib/config";
 import { appointmentStatusLabel, money, shortDate } from "@/lib/format";
 import type { ApiList, Appointment, Client } from "@/types/domain";
 
@@ -19,6 +19,8 @@ export default function ClientePage() {
   const [profile, setProfile] = useState<Client | null>(null);
   const [error, setError] = useState("");
   const [section, setSection] = useState<"reservas" | "perfil">("reservas");
+  const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const load = useCallback(() => {
     Promise.all([
@@ -54,8 +56,28 @@ export default function ClientePage() {
     };
   }, []);
 
-  const future = appointments.filter((item) => new Date(item.starts_at) >= new Date());
-  const past = appointments.filter((item) => new Date(item.starts_at) < new Date());
+  const historicalStatuses = new Set(["completed", "cancelled", "no_show"]);
+  const future = appointments.filter(
+    (item) => new Date(item.starts_at) >= new Date() && !historicalStatuses.has(item.status),
+  );
+  const past = appointments.filter(
+    (item) => new Date(item.starts_at) < new Date() || historicalStatuses.has(item.status),
+  );
+
+  async function cancelAppointment() {
+    if (!cancelTarget) return;
+    setCancelLoading(true);
+    setError("");
+    try {
+      const updated = await api.patch<Appointment>(`/client/me/appointments/${cancelTarget.id}/cancel`, {});
+      setAppointments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setCancelTarget(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cancelar la reserva.");
+    } finally {
+      setCancelLoading(false);
+    }
+  }
 
   return (
     <ProtectedRoute roles={["cliente", "admin"]}>
@@ -71,11 +93,22 @@ export default function ClientePage() {
             <ProfileCard profile={profile} onProfileSaved={setProfile} />
           ) : (
             <>
-              <AppointmentList title="Proximos turnos" items={future} />
+              <AppointmentList
+                canCancel
+                onCancel={setCancelTarget}
+                title="Proximos turnos"
+                items={future}
+              />
               <AppointmentList title="Historial" items={past} />
             </>
           )}
         </div>
+        <CancelReservationDialog
+          appointment={cancelTarget}
+          loading={cancelLoading}
+          onCancel={() => setCancelTarget(null)}
+          onConfirm={cancelAppointment}
+        />
       </PanelShell>
     </ProtectedRoute>
   );
@@ -175,7 +208,17 @@ function ProfileCard({
   );
 }
 
-function AppointmentList({ title, items }: { title: string; items: Appointment[] }) {
+function AppointmentList({
+  title,
+  items,
+  canCancel = false,
+  onCancel,
+}: {
+  title: string;
+  items: Appointment[];
+  canCancel?: boolean;
+  onCancel?: (appointment: Appointment) => void;
+}) {
   const { locale } = usePreferences();
 
   return (
@@ -192,21 +235,37 @@ function AppointmentList({ title, items }: { title: string; items: Appointment[]
         {items.length ? (
           items.map((appointment) => (
             <article key={appointment.id} className="rounded-md bg-smoke p-3 text-sm">
-              <p className="font-bold text-ink">{shortDate(appointment.starts_at)}</p>
-              <p className="mt-1 text-steel">
-                Estado: {appointmentStatusLabel(appointment.status, locale)}
-              </p>
-              <p className="text-steel">Monto: {money(appointment.total_final ?? appointment.total_estimated)}</p>
-              <a href={googleCalendarUrl(appointment)} target="_blank" rel="noreferrer">
-                <Button className="mt-3" type="button" variant="secondary">
-                  Abrir en Google Calendar
-                </Button>
-              </a>
-              <a className="ml-2" href={`${appConfig.backendUrl}/api/appointments/${appointment.id}/calendar.ics`}>
-                <Button className="mt-3" type="button" variant="secondary">
-                  Descargar .ics
-                </Button>
-              </a>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="font-bold text-ink">{shortDate(appointment.starts_at)}</p>
+                  <p className="mt-1 text-steel">
+                    Estado: {appointmentStatusLabel(appointment.status, locale)}
+                  </p>
+                  <p className="text-steel">Monto: {money(appointment.total_final ?? appointment.total_estimated)}</p>
+                  <p className="mt-2 font-semibold text-ink">
+                    Servicio: {serviceSummary(appointment)}
+                  </p>
+                </div>
+                <BarberBadge appointment={appointment} />
+              </div>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <a href={googleCalendarUrl(appointment)} target="_blank" rel="noreferrer">
+                  <Button className="w-full sm:w-auto" type="button" variant="secondary">
+                    Abrir en Google Calendar
+                  </Button>
+                </a>
+                {canCancel ? (
+                  <Button
+                    className="w-full sm:w-auto"
+                    onClick={() => onCancel?.(appointment)}
+                    type="button"
+                    variant="danger"
+                  >
+                    <CalendarX className="h-4 w-4" />
+                    Cancelar reserva
+                  </Button>
+                ) : null}
+              </div>
             </article>
           ))
         ) : (
@@ -214,6 +273,90 @@ function AppointmentList({ title, items }: { title: string; items: Appointment[]
         )}
       </div>
     </section>
+  );
+}
+
+function BarberBadge({ appointment }: { appointment: Appointment }) {
+  const name = appointment.barber?.full_name || "Barbero asignado";
+  return (
+    <div className="flex min-w-[180px] items-center gap-3 rounded-md bg-white/70 p-2">
+      <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-white text-ink">
+        {appointment.barber?.profile_image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            alt=""
+            className="h-full w-full object-cover"
+            referrerPolicy="no-referrer"
+            src={appointment.barber.profile_image_url}
+          />
+        ) : (
+          <UserRound className="h-6 w-6 text-steel" />
+        )}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs font-bold uppercase tracking-[0.12em] text-steel">Barbero</span>
+        <span className="block truncate font-bold text-ink">{name}</span>
+      </span>
+    </div>
+  );
+}
+
+function serviceSummary(appointment: Appointment) {
+  const names = [
+    appointment.primary_service?.name,
+    ...(appointment.extra_services ?? []).map((extra) => extra.name || extra.service?.name),
+  ].filter(Boolean);
+  return names.length ? names.join(" + ") : `Turno #${appointment.id}`;
+}
+
+function CancelReservationDialog({
+  appointment,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  appointment: Appointment | null;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!appointment) return null;
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4 py-6 backdrop-blur-sm">
+      <section className="w-full max-w-md rounded-lg border border-black/10 bg-white p-5 shadow-soft">
+        <div className="flex items-start justify-between gap-4">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-clay/15 text-clay">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <button
+            aria-label="Cerrar"
+            className="grid h-9 w-9 place-items-center rounded-md text-steel hover:bg-smoke"
+            onClick={onCancel}
+            type="button"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <h2 className="mt-4 text-xl font-bold text-ink">Cancelar reserva</h2>
+        <p className="mt-2 leading-6 text-steel">
+          Estas seguro que queres cancelar tu reserva para el{" "}
+          <span className="font-bold text-ink">{shortDate(appointment.starts_at)}</span>?
+        </p>
+        <p className="mt-2 text-sm leading-6 text-steel">
+          Servicio: <span className="font-semibold text-ink">{serviceSummary(appointment)}</span>
+          <br />
+          Barbero: <span className="font-semibold text-ink">{appointment.barber?.full_name || "Barbero asignado"}</span>
+        </p>
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button disabled={loading} type="button" variant="secondary" onClick={onCancel}>
+            Mantener
+          </Button>
+          <Button loading={loading} type="button" variant="danger" onClick={onConfirm}>
+            Dar la baja
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }
 
