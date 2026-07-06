@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LogOut, Moon, Sun, UserRound } from "lucide-react";
+import { LogOut, Moon, Plus, Sun, UserRound } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { usePreferences } from "@/components/preferences-provider";
 import { Button } from "@/components/ui/button";
@@ -15,12 +15,14 @@ export function PanelShell({
   children,
   profileImageUrl,
   headerAccessory,
+  clientReservationCount,
 }: {
   title: string;
   subtitle: string;
   children: React.ReactNode;
   profileImageUrl?: string | null;
   headerAccessory?: React.ReactNode;
+  clientReservationCount?: number;
 }) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = usePreferences();
@@ -61,13 +63,33 @@ export function PanelShell({
                 <Avatar imageUrl={avatarUrl} fallback={user?.full_name} sizeClassName="h-16 w-16" />
               </div>
               <nav className="grid gap-2 text-sm">
-                <button
-                  className="block w-full rounded-md px-2 py-2 text-left hover:bg-smoke"
-                  onClick={() => openClientSection("reservas")}
-                  type="button"
-                >
-                  Mis reservas
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    className="min-w-0 flex-1 rounded-md px-2 py-2 text-left hover:bg-smoke"
+                    onClick={() => openClientSection("reservas")}
+                    type="button"
+                  >
+                    Mis reservas
+                  </button>
+                  {clientReservationCount ? (
+                    <button
+                      aria-label={`${clientReservationCount} reservas`}
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brass text-xs font-bold text-ink"
+                      onClick={() => openClientSection("reservas")}
+                      type="button"
+                    >
+                      {clientReservationCount}
+                    </button>
+                  ) : (
+                    <Link
+                      aria-label="Nueva reserva"
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-black/10 bg-white text-ink hover:bg-smoke dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+                      href="/reservar"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Link>
+                  )}
+                </div>
                 <button
                   className="block w-full rounded-md px-2 py-2 text-left hover:bg-smoke"
                   onClick={() => openClientSection("perfil")}

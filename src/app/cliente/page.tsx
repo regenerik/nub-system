@@ -63,6 +63,7 @@ export default function ClientePage() {
         title={`Hola ${profile?.full_name || "cliente"}`}
         subtitle="Bienvenido a NUB."
         profileImageUrl={profile?.profile_image_url}
+        clientReservationCount={future.length}
       >
         <div id={section === "perfil" ? "mi-perfil" : "mis-reservas"} className="grid gap-5">
           {error ? <ErrorState message={error} /> : null}
@@ -123,39 +124,44 @@ function ProfileCard({
   }
 
   return (
-    <section id="mi-perfil" className="rounded-lg border border-black/10 bg-white p-4 shadow-soft">
-      <div className="flex items-center gap-3">
-        <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-full bg-smoke text-ink">
-          {form.profile_image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img alt="" className="h-full w-full object-cover" src={form.profile_image_url} referrerPolicy="no-referrer" />
-          ) : (
-            <span className="text-lg font-bold">{form.full_name.slice(0, 1) || "N"}</span>
-          )}
-        </span>
-        <div>
+    <section id="mi-perfil" className="rounded-lg border border-black/10 bg-white p-4 shadow-soft sm:p-5">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative shrink-0">
+          <span className="grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-smoke text-ink sm:h-24 sm:w-24">
+            {form.profile_image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img alt="" className="h-full w-full object-cover" src={form.profile_image_url} referrerPolicy="no-referrer" />
+            ) : (
+              <span className="text-2xl font-bold">{form.full_name.slice(0, 1) || "N"}</span>
+            )}
+          </span>
+          <ImageUploader
+            buttonClassName="inline-flex min-h-8 cursor-pointer items-center justify-center gap-1 rounded-full border border-black/10 bg-brass px-3 py-1.5 text-xs font-bold text-ink shadow-soft transition hover:brightness-95"
+            buttonLabel="Reemplazar imagen"
+            className="absolute -bottom-2 left-10 w-max sm:left-12"
+            onChange={(url) => setForm({ ...form, profile_image_url: url })}
+            showPreview={false}
+            value={form.profile_image_url}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
           <h2 className="text-lg font-bold text-ink">Mi perfil</h2>
           <p className="text-sm text-steel">Actualiza tus datos personales.</p>
         </div>
       </div>
       <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={save}>
         <Field label="Nombre completo">
-          <Input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} />
+          <Input placeholder="Tu nombre y apellido" value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} />
         </Field>
         <Field label="Telefono">
-          <Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+          <Input placeholder="+54 9 11 2345-6789" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
         </Field>
         <Field label="DNI">
-          <Input value={form.dni} onChange={(event) => setForm({ ...form, dni: event.target.value })} />
+          <Input placeholder="Ej: 30123456" value={form.dni} onChange={(event) => setForm({ ...form, dni: event.target.value })} />
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Foto de perfil">
-            <ImageUploader value={form.profile_image_url} onChange={(url) => setForm({ ...form, profile_image_url: url })} />
-          </Field>
-        </div>
-        <div className="sm:col-span-2">
           <Field label="Notas personales">
-            <Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+            <Textarea placeholder="Preferencias, alergias o comentarios para tus reservas" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </Field>
         </div>
         {error ? <div className="sm:col-span-2"><ErrorState message={error} /></div> : null}

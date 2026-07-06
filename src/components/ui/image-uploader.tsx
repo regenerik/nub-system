@@ -7,9 +7,17 @@ import { api } from "@/lib/api";
 export function ImageUploader({
   value,
   onChange,
+  buttonLabel = "Subir imagen",
+  buttonClassName,
+  className = "",
+  showPreview = true,
 }: {
   value?: string | null;
   onChange: (url: string) => void;
+  buttonLabel?: string;
+  buttonClassName?: string;
+  className?: string;
+  showPreview?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -31,9 +39,13 @@ export function ImageUploader({
     }
   }
 
+  const labelClassName = `${buttonClassName ?? "inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke"} ${
+    loading ? "pointer-events-none opacity-60" : ""
+  }`;
+
   return (
-    <div className="grid gap-2">
-      {value ? (
+    <div className={`grid gap-2 ${className}`}>
+      {showPreview && value ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={value} alt="" className="h-24 w-24 rounded-md border object-cover" />
       ) : null}
@@ -47,12 +59,10 @@ export function ImageUploader({
       />
       <label
         htmlFor={inputId}
-        className={`inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-smoke ${
-          loading ? "pointer-events-none opacity-60" : ""
-        }`}
+        className={labelClassName}
       >
           <Upload className="h-4 w-4" />
-          {loading ? "Subiendo..." : "Subir imagen"}
+          {loading ? "Subiendo..." : buttonLabel}
       </label>
       {error ? <p className="text-sm text-clay">{error}</p> : null}
     </div>
