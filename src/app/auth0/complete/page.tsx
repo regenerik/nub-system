@@ -52,10 +52,10 @@ export default function Auth0CompletePage() {
         <section className="w-full max-w-md rounded-lg border border-black/10 bg-white p-5 text-center shadow-soft">
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-brass">Auth0</p>
           <h1 className="mt-3 text-2xl font-bold text-ink">
-            {t("Completando inicio de sesion", "Completing sign-in")}
+            {t("Ingresando", "Signing in")}
           </h1>
           <p className="mt-2 text-sm text-steel">
-            {t("Estamos preparando tu panel.", "We are preparing your panel.")}
+            {t("Te estamos llevando a tu panel.", "Taking you to your panel.")}
           </p>
           {error ? <div className="mt-4"><ErrorState message={error} /></div> : null}
         </section>

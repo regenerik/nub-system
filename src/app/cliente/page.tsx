@@ -18,6 +18,7 @@ export default function ClientePage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [profile, setProfile] = useState<Client | null>(null);
   const [error, setError] = useState("");
+  const [section, setSection] = useState<"reservas" | "perfil">("reservas");
 
   const load = useCallback(() => {
     Promise.all([
@@ -33,21 +34,35 @@ export default function ClientePage() {
 
   useEffect(load, [load]);
 
+  useEffect(() => {
+    function syncSectionFromHash() {
+      setSection(window.location.hash === "#mi-perfil" ? "perfil" : "reservas");
+    }
+    syncSectionFromHash();
+    window.addEventListener("hashchange", syncSectionFromHash);
+    return () => window.removeEventListener("hashchange", syncSectionFromHash);
+  }, []);
+
   const future = appointments.filter((item) => new Date(item.starts_at) >= new Date());
   const past = appointments.filter((item) => new Date(item.starts_at) < new Date());
 
   return (
     <ProtectedRoute roles={["cliente", "admin"]}>
       <PanelShell
-        title="Panel cliente"
-        subtitle="Tus proximos turnos, historial y calendario."
+        title={`Hola ${profile?.full_name || "cliente"}`}
+        subtitle="Bienvenido a NUB."
         profileImageUrl={profile?.profile_image_url}
       >
-        <div className="grid gap-5">
+        <div id={section === "perfil" ? "mi-perfil" : "mis-reservas"} className="grid gap-5">
           {error ? <ErrorState message={error} /> : null}
-          <AppointmentList title="Proximos turnos" items={future} />
-          <AppointmentList title="Historial" items={past} />
-          <ProfileCard profile={profile} onProfileSaved={setProfile} />
+          {section === "perfil" ? (
+            <ProfileCard profile={profile} onProfileSaved={setProfile} />
+          ) : (
+            <>
+              <AppointmentList title="Proximos turnos" items={future} />
+              <AppointmentList title="Historial" items={past} />
+            </>
+          )}
         </div>
       </PanelShell>
     </ProtectedRoute>

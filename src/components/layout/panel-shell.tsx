@@ -45,26 +45,22 @@ export function PanelShell({
   return (
     <main className="min-h-screen">
       <div className="mx-2 grid max-w-none gap-5 px-2 py-5 sm:mx-3 sm:px-3 lg:grid-cols-[144px_1fr] lg:px-3">
-        <aside className="rounded-lg border border-black/10 bg-white p-3 shadow-soft lg:sticky lg:top-5 lg:h-[calc(100vh-2.5rem)]">
+        <aside className="overflow-hidden rounded-lg border border-black/10 bg-white p-3 shadow-soft lg:sticky lg:top-5 lg:h-[calc(100vh-2.5rem)]">
           <Link href="/" className="text-lg font-bold text-ink">
             NUB System
           </Link>
           {isClient ? (
             <div className="mt-5 grid gap-3">
-              <div className="flex items-center gap-3">
-                <Avatar imageUrl={avatarUrl} fallback={user?.full_name} sizeClassName="h-12 w-12" />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-ink">Hola {user?.full_name}</p>
-                  <p className="text-xs text-steel">Bienvenido a NUB.</p>
-                </div>
+              <div className="flex justify-center">
+                <Avatar imageUrl={avatarUrl} fallback={user?.full_name} sizeClassName="h-16 w-16" />
               </div>
               <nav className="grid gap-2 text-sm">
-                <Link href="/cliente" className="rounded-md px-3 py-2 hover:bg-smoke">
+                <Link href="/cliente#mis-reservas" className="block w-full rounded-md px-2 py-2 hover:bg-smoke">
                   Mis reservas
                 </Link>
-                <a href="#mi-perfil" className="rounded-md px-3 py-2 hover:bg-smoke">
+                <Link href="/cliente#mi-perfil" className="block w-full rounded-md px-2 py-2 hover:bg-smoke">
                   Mi perfil
-                </a>
+                </Link>
               </nav>
             </div>
           ) : (
