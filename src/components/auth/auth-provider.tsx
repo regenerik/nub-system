@@ -111,11 +111,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     disconnectSocket();
-    setSession(null, null);
+    writeToken(null);
+    writeStoredUser(null);
     try {
-      window.location.assign(auth0LogoutUrl());
+      window.location.replace(auth0LogoutUrl());
     } catch {
-      window.location.assign("/");
+      setSession(null, null);
+      window.location.replace("/");
     }
   }, [setSession]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CalendarX, MapPin, UserRound, X } from "lucide-react";
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -12,6 +12,7 @@ import { ImageUploader } from "@/components/ui/image-uploader";
 import { EmptyState, ErrorState } from "@/components/ui/status";
 import { api } from "@/lib/api";
 import { appointmentStatusLabel, money, shortDate } from "@/lib/format";
+import { useSocket } from "@/hooks/use-socket";
 import type { ApiList, Appointment, Client } from "@/types/domain";
 
 const BARBERSHOP_WHATSAPP_NUMBER = "5491121893986";
@@ -37,6 +38,18 @@ export default function ClientePage() {
   }, []);
 
   useEffect(load, [load]);
+
+  const socketEvents = useMemo(
+    () => ({
+      "appointment:created": load,
+      "appointment:updated": load,
+      "appointment:rescheduled": load,
+      "appointment:cancelled": load,
+      "appointment:completed": load,
+    }),
+    [load],
+  );
+  useSocket(socketEvents);
 
   useEffect(() => {
     function setFromValue(value?: string) {
