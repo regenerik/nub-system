@@ -174,6 +174,7 @@ export type Appointment = {
   paid_total?: number;
   payment_pending?: number;
   tip_amount?: number;
+  branch?: Branch;
 };
 
 export type AppointmentExtraService = {

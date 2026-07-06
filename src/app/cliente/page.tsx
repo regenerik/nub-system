@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CalendarX, UserRound, X } from "lucide-react";
+import { AlertTriangle, CalendarX, MapPin, UserRound, X } from "lucide-react";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { PanelShell } from "@/components/layout/panel-shell";
 import { usePreferences } from "@/components/preferences-provider";
@@ -245,6 +245,7 @@ function AppointmentList({
                   <p className="mt-2 font-semibold text-ink">
                     Servicio: {serviceSummary(appointment)}
                   </p>
+                  <BranchLine appointment={appointment} />
                 </div>
                 <BarberBadge appointment={appointment} />
               </div>
@@ -301,6 +302,33 @@ function BarberBadge({ appointment }: { appointment: Appointment }) {
   );
 }
 
+function BranchLine({ appointment }: { appointment: Appointment }) {
+  if (!appointment.branch) return null;
+  const mapsUrl = googleMapsUrl(appointment);
+  return (
+    <div className="mt-2 grid gap-1 text-steel">
+      <p>
+        Sucursal: <span className="font-semibold text-ink">{appointment.branch.name}</span>
+      </p>
+      <p className="flex flex-wrap items-center gap-1">
+        <span>
+          Direccion: <span className="font-semibold text-ink">{appointment.branch.address}</span>
+        </span>
+        <a
+          aria-label="Abrir direccion en Google Maps"
+          className="inline-grid h-7 w-7 place-items-center rounded-full bg-clay/15 text-clay transition hover:bg-clay/25"
+          href={mapsUrl}
+          rel="noreferrer"
+          target="_blank"
+          title="Abrir en Google Maps"
+        >
+          <MapPin className="h-4 w-4" />
+        </a>
+      </p>
+    </div>
+  );
+}
+
 function serviceSummary(appointment: Appointment) {
   const names = [
     appointment.primary_service?.name,
@@ -346,6 +374,22 @@ function CancelReservationDialog({
           Servicio: <span className="font-semibold text-ink">{serviceSummary(appointment)}</span>
           <br />
           Barbero: <span className="font-semibold text-ink">{appointment.barber?.full_name || "Barbero asignado"}</span>
+          {appointment.branch ? (
+            <>
+              <br />
+              Sucursal: <span className="font-semibold text-ink">{appointment.branch.name}</span>
+              <br />
+              Direccion:{" "}
+              <a
+                className="font-semibold text-brass underline-offset-4 hover:underline"
+                href={googleMapsUrl(appointment)}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {appointment.branch.address}
+              </a>
+            </>
+          ) : null}
         </p>
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button disabled={loading} type="button" variant="secondary" onClick={onCancel}>
@@ -370,4 +414,9 @@ function googleCalendarUrl(appointment: Appointment) {
     details: `Turno #${appointment.id}. Estado: ${appointmentStatusLabel(appointment.status)}`,
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function googleMapsUrl(appointment: Appointment) {
+  const query = [appointment.branch?.name, appointment.branch?.address].filter(Boolean).join(" ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
