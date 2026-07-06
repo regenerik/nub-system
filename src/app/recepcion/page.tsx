@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -50,7 +50,7 @@ export default function RecepcionPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [selectedDate, setSelectedDate] = useState(todayInputValue());
+  const [selectedDate, setSelectedDate] = useState(localDateInputValue());
   const [quickCreate, setQuickCreate] = useState<QuickCreate | null>(null);
   const [dateClosureOpen, setDateClosureOpen] = useState(false);
   const { user } = useAuth();
@@ -260,6 +260,18 @@ function timeFromMinutes(total: number) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function localDateInputValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function currentQuarterSlot(date = new Date()) {
+  const minutes = date.getHours() * 60 + date.getMinutes();
+  return timeFromMinutes(Math.floor(minutes / 15) * 15);
+}
+
 function branchTimeRange(branch: Branch | null, date: string) {
   const schedule = branchDaySchedule(branch, date);
   if (!schedule.enabled) return null;
@@ -433,6 +445,26 @@ function appointmentServiceSummary(appointment: Appointment) {
   return names.join(" + ");
 }
 
+function ClientAvatar({ appointment }: { appointment: Appointment }) {
+  const imageUrl = appointment.client?.profile_image_url;
+  const initials = appointmentClientName(appointment)
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <span className="pointer-events-none absolute right-1.5 top-1.5 grid h-11 w-11 place-items-center overflow-hidden rounded-full border border-white/80 bg-white text-[11px] font-black text-ink shadow-sm">
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" src={imageUrl} />
+      ) : (
+        <span>{initials || "CL"}</span>
+      )}
+    </span>
+  );
+}
+
 function isPrimaryService(service: Service) {
   return service.service_type === "main" || service.service_type === "both";
 }
@@ -550,10 +582,26 @@ function Agenda({
   onQuickCreate: (date: string, time: string, barberId: number, forceUnavailable?: boolean) => void;
 }) {
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const [now, setNow] = useState(() => new Date());
+  const agendaGridRef = useRef<HTMLDivElement | null>(null);
   const dayAppointments = appointments.filter((item) => isVisibleOnAgenda(item) && sameDay(item.starts_at, selectedDate));
   const dayBlocks = scheduleBlocks.filter((block) => sameDay(block.starts_at, selectedDate));
   const selectedDateLabel = new Date(`${selectedDate}T00:00:00`).toLocaleDateString("es-AR");
   const visibleTimeSlots = timeSlots(branch, selectedDate);
+  const currentSlot = currentQuarterSlot(now);
+  const currentSlotVisible = selectedDate === localDateInputValue(now) && visibleTimeSlots.includes(currentSlot);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  function scrollToCurrentSlot() {
+    if (!currentSlotVisible) return;
+    agendaGridRef.current
+      ?.querySelector(`[data-time-slot="${currentSlot}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+  }
 
   async function cancel(id: number) {
     if (!window.confirm("Cancelar este turno?")) return;
@@ -608,32 +656,43 @@ function Agenda({
 
   return (
     <section className="rounded-lg border border-black/10 bg-white p-4 shadow-soft">
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          aria-label={dateClosure ? "Habilitar esta fecha" : "Dar de baja esta fecha"}
-          title={dateClosure ? "Habilitar esta fecha" : "Dar de baja esta fecha"}
-          className={`grid h-10 w-10 place-items-center rounded-md border ${
-            dateClosure
-              ? "border-green-700/25 bg-green-100 text-green-800 hover:bg-green-700 hover:text-white"
-              : "border-clay/25 bg-clay/10 text-clay hover:bg-clay hover:text-white"
-          }`}
-          onClick={onToggleDateClosure}
-        >
-          <AlertTriangle className="h-4 w-4" />
-        </button>
-        <div>
-          <h2 className="text-lg font-bold text-ink">Turnos del dia {selectedDateLabel}</h2>
-          {dateClosure ? (
-            <p className="text-sm font-semibold text-clay">
-              Fecha bloqueada: {dateClosure.reason || "dada de baja desde recepcion."}
-            </p>
-          ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            aria-label={dateClosure ? "Habilitar esta fecha" : "Dar de baja esta fecha"}
+            title={dateClosure ? "Habilitar esta fecha" : "Dar de baja esta fecha"}
+            className={`grid h-10 w-10 place-items-center rounded-md border ${
+              dateClosure
+                ? "border-green-700/25 bg-green-100 text-green-800 hover:bg-green-700 hover:text-white"
+                : "border-clay/25 bg-clay/10 text-clay hover:bg-clay hover:text-white"
+            }`}
+            onClick={onToggleDateClosure}
+          >
+            <AlertTriangle className="h-4 w-4" />
+          </button>
+          <div>
+            <h2 className="text-lg font-bold text-ink">Turnos del dia {selectedDateLabel}</h2>
+            {dateClosure ? (
+              <p className="text-sm font-semibold text-clay">
+                Fecha bloqueada: {dateClosure.reason || "dada de baja desde recepcion."}
+              </p>
+            ) : null}
+          </div>
         </div>
+        <Button
+          disabled={!currentSlotVisible}
+          type="button"
+          variant="secondary"
+          onClick={scrollToCurrentSlot}
+          title={currentSlotVisible ? `Ir al horario actual: ${currentSlot}` : "El horario actual no esta visible para esta fecha"}
+        >
+          Ahora
+        </Button>
       </div>
       {!barbers.length ? <EmptyState title="Sin barberos para esta sucursal." /> : null}
       <div className="mt-4 max-w-full overflow-x-auto">
-        <div className="grid min-w-[640px]" style={{ gridTemplateColumns: `74px repeat(${Math.max(barbers.length, 1)}, minmax(150px, 1fr))` }}>
+        <div ref={agendaGridRef} className="grid min-w-[640px]" style={{ gridTemplateColumns: `74px repeat(${Math.max(barbers.length, 1)}, minmax(150px, 1fr))` }}>
           <div className="sticky left-0 z-10 bg-white p-2 text-xs font-bold uppercase text-steel">Hora</div>
           {barbers.map((barber) => (
             <div key={barber.id} className="border-l border-black/10 p-2 text-sm text-ink">
@@ -650,16 +709,26 @@ function Agenda({
           ) : null}
           {visibleTimeSlots.map((time) => (
             <div key={time} className="contents">
-              <div className="sticky left-0 z-10 border-t border-black/10 bg-white p-2 text-xs text-steel">{time}</div>
+              <div
+                data-time-slot={time}
+                className={`sticky left-0 z-10 border-t border-black/10 p-2 text-xs ${
+                  currentSlotVisible && time === currentSlot ? "bg-brass/20 font-bold text-ink" : "bg-white text-steel"
+                }`}
+              >
+                {time}
+              </div>
               {barbers.map((barber) => {
                 const slotAppointments = dayAppointments.filter((item) => item.barber_id === barber.id && floorTimeToQuarter(item.starts_at.slice(11, 16)) === time);
                 const slotBlocks = dayBlocks.filter((block) => blockOverlapsSlot(block, selectedDate, time, barber.id));
                 const blocked = Boolean(slotBlocks.length);
                 const softUnavailable = isSoftUnavailableSlot(barberAvailabilities, branchId, barber.id, selectedDate, time);
+                const isCurrentSlot = currentSlotVisible && time === currentSlot;
                 return (
                   <div
                     key={`${barber.id}-${time}`}
-                    className={`group relative min-h-16 border-l border-t border-black/10 p-1 ${blocked ? "bg-red-950/10" : ""}`}
+                    className={`group relative min-h-16 border-l border-t border-black/10 p-1 ${
+                      blocked ? "bg-red-950/10" : isCurrentSlot ? "bg-brass/10 ring-1 ring-inset ring-brass/30" : ""
+                    }`}
                     style={
                       !blocked && softUnavailable
                         ? {
@@ -718,7 +787,7 @@ function Agenda({
                         onDragOver={(event) => event.preventDefault()}
                         onDrop={(event) => dropAppointmentOnCard(event, barber.id, slotAppointment)}
                         onClick={() => setSelected(slotAppointment)}
-                        className="absolute left-1 z-20 cursor-grab select-none rounded-md bg-brass/15 p-2 text-left text-xs text-ink shadow-sm ring-1 ring-brass/30 active:cursor-grabbing"
+                        className="absolute left-1 z-20 cursor-grab select-none rounded-md bg-brass/15 p-2 pr-12 text-left text-xs text-ink shadow-sm ring-1 ring-brass/30 active:cursor-grabbing"
                         style={{
                           top: appointmentTopOffset(slotAppointment),
                           width: `calc(100% - ${appointmentOffset(slotAppointment, dayAppointments) + 8}px)`,
@@ -726,6 +795,7 @@ function Agenda({
                           height: appointmentCardHeight(slotAppointment),
                         }}
                       >
+                        <ClientAvatar appointment={slotAppointment} />
                         <span className="block truncate font-bold">{appointmentClientName(slotAppointment)}</span>
                         <span className="mt-0.5 line-clamp-2 block leading-snug">{appointmentServiceSummary(slotAppointment)}</span>
                         <span className="mt-1 flex flex-wrap gap-1"><StatusBadge status={slotAppointment.status} /><PaymentBadge appointment={slotAppointment} /></span>
