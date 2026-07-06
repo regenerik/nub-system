@@ -1336,28 +1336,42 @@ function AppointmentModal({
     setError("");
     setChargeState("charging");
     try {
-    await syncAppointmentItems();
-    const items = allBillingItems.map((item) =>
-      item.item_type === "service"
-        ? { item_type: "service", service_id: item.item_id, quantity: item.quantity, unit_price: item.unit_price }
-        : { item_type: "product", product_id: item.item_id, quantity: item.quantity, unit_price: item.unit_price },
-    );
-    const sale = await api.post<{ id: number }>("/sales", {
-      branch_id: appointment.branch_id,
-      client_id: appointment.client_id,
-      appointment_id: appointment.id,
-      items,
-      discount_amount: discountTotal,
-      payment: payments[0] ? { method: payments[0].method, amount: parseMoneyInput(payments[0].amount) } : undefined,
-    });
-    for (const payment of payments.slice(1)) {
-      await api.post(`/sales/${sale.id}/payments`, { method: payment.method, amount: parseMoneyInput(payment.amount) });
-    }
-    const updated = await api.patch<Appointment>(`/appointments/${appointment.id}`, { total_final: appointmentServicesTotalFinal });
-    setCurrent(updated);
-    setChargeState("charged");
-    onDone("Cobro registrado.");
-    window.setTimeout(() => setChargeState("idle"), 1800);
+      const paymentRows = payments
+        .map((payment) => ({ method: payment.method, amount: parseMoneyInput(payment.amount) }))
+        .filter((payment) => payment.amount > 0);
+      if (!paymentRows.length) {
+        throw new Error("Agrega al menos un pago mayor a cero.");
+      }
+      const syncedAppointment = await syncAppointmentItems();
+      const existingSaleId = syncedAppointment.sale?.id ?? current.sale?.id;
+      if (existingSaleId) {
+        for (const payment of paymentRows) {
+          await api.post(`/sales/${existingSaleId}/payments`, payment);
+        }
+      } else {
+        const items = allBillingItems.map((item) =>
+          item.item_type === "service"
+            ? { item_type: "service", service_id: item.item_id, quantity: item.quantity, unit_price: item.unit_price }
+            : { item_type: "product", product_id: item.item_id, quantity: item.quantity, unit_price: item.unit_price },
+        );
+        const sale = await api.post<{ id: number }>("/sales", {
+          branch_id: syncedAppointment.branch_id,
+          client_id: syncedAppointment.client_id,
+          appointment_id: syncedAppointment.id,
+          items,
+          discount_amount: discountTotal,
+          payment: paymentRows[0],
+        });
+        for (const payment of paymentRows.slice(1)) {
+          await api.post(`/sales/${sale.id}/payments`, payment);
+        }
+      }
+      const updated = await api.patch<Appointment>(`/appointments/${appointment.id}`, { total_final: appointmentServicesTotalFinal });
+      setCurrent(updated);
+      setPayments([{ method: "efectivo", amount: "" }]);
+      setChargeState("charged");
+      onDone(updated.tip_amount && updated.tip_amount > 0 ? "Cobro registrado con propina." : "Cobro registrado.");
+      window.setTimeout(() => setChargeState("idle"), 1800);
     } catch (err) {
       setChargeState("idle");
       setError(err instanceof Error ? err.message : "No se pudo registrar el cobro.");
