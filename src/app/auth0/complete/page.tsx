@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { PublicHeader } from "@/components/layout/public-header";
 import { usePreferences } from "@/components/preferences-provider";
@@ -12,7 +11,6 @@ import type { User } from "@/types/domain";
 export default function Auth0CompletePage() {
   const { completeAuth0Login, redirectForRole } = useAuth();
   const { t } = usePreferences();
-  const router = useRouter();
   const [error, setError] = useState("");
   const started = useRef(false);
 
@@ -26,13 +24,13 @@ export default function Auth0CompletePage() {
     completeAuth0Login()
       .then((user) => {
         if (!cancelled) {
-          router.replace(redirectForRole(user.role));
+          window.location.replace(withTrailingSlash(redirectForRole(user.role)));
         }
       })
       .catch((err) => {
         const storedUser = readStoredUser<User>();
         if (!cancelled && readToken() && storedUser) {
-          router.replace(redirectForRole(storedUser.role));
+          window.location.replace(withTrailingSlash(redirectForRole(storedUser.role)));
           return;
         }
         if (!cancelled) {
@@ -43,7 +41,7 @@ export default function Auth0CompletePage() {
     return () => {
       cancelled = true;
     };
-  }, [completeAuth0Login, redirectForRole, router, t]);
+  }, [completeAuth0Login, redirectForRole, t]);
 
   return (
     <>
@@ -62,4 +60,8 @@ export default function Auth0CompletePage() {
       </main>
     </>
   );
+}
+
+function withTrailingSlash(path: string) {
+  return path.endsWith("/") ? path : `${path}/`;
 }
